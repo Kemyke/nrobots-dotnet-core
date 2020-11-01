@@ -305,7 +305,7 @@ Disallow: /?category=another&color=red
         [TestMethod]
         public void Disallow_querystring_exact_match_not_supported_Test()
         {
-            Assert.IsTrue(RobotsContentWithQuerystringOnRoot.Allowed(BASE_URL + "?category=whatever", "googlebot"));
+            Assert.IsFalse(RobotsContentWithQuerystringOnRoot.Allowed(BASE_URL + "?category=whatever", "googlebot"));
         }
 
         [TestMethod]
@@ -320,6 +320,26 @@ Disallow: /?category=another&color=red
         {
             bool actual = RobotsWildcards.Allowed("/a/public/c/");
             Assert.AreEqual(true, actual);
+        }
+
+        [TestMethod]
+        public void Allow_QuestionMarkAfterSlashTest_DisallowOnlyWhenTheQuestionMarkIsRightAfterTheSlash()
+        {
+            var robots = new Robots.Robots();
+            robots.LoadContent(
+                @"User-Agent: *
+Disallow: /?
+Disallow: /disallowfolder/?private
+Allow: /?public/public"
+                ,BaseUrl
+            );
+
+            Assert.IsFalse(robots.Allowed("/?blablabla"));
+            Assert.IsTrue(robots.Allowed("/blablabla/blabla"));
+            Assert.IsTrue(robots.Allowed("/blablabla/?blabla"));
+            Assert.IsTrue(robots.Allowed("/blab?labla"));
+            Assert.IsFalse(robots.Allowed("/disallowfolder/?private"));
+            Assert.IsTrue(robots.Allowed("/?public/public"));
         }
 
         [TestMethod]
@@ -498,7 +518,6 @@ Disallow: /?category=another&color=red
         [TestMethod]
         public void Sitemap_NoSitemapValueInRobotsDotText_ReturnEmptyCollection()
         {
-
             Assert.AreEqual(0, RobotsEmpty.GetSitemapUrls().Count);
         }
     }
