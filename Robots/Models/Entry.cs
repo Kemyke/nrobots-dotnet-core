@@ -82,7 +82,7 @@ namespace Robots.Model
                     type = EntryType.UserAgent;
                     entry = CreateEntry(type);
                     entry.Comment = comment;
-                    string userAgent = entryText.Substring(USER_AGENT_KEYWORD.Length).Trim().TrimEnd('?');;
+                    string userAgent = entryText.Substring(USER_AGENT_KEYWORD.Length).Trim().TrimEnd('?');
 
                     if(userAgent == null || string.IsNullOrEmpty(userAgent.Trim()))
                     {
@@ -98,7 +98,7 @@ namespace Robots.Model
                 {
                     type = EntryType.Disallow;
                     bool inverted = entryText.EndsWith("$");
-                    string value = entryText.Substring(DISALLOW_KEYWORD.Length).Trim().TrimEnd('?');
+                    string value = entryText.Substring(DISALLOW_KEYWORD.Length).Trim();
 
                     Uri url = null;
                     if (!string.IsNullOrEmpty(value) && Uri.TryCreate(baseUri, value, out url))
