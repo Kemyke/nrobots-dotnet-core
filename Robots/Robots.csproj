@@ -7,7 +7,7 @@
     <AssemblyName>Robots</AssemblyName>
 
     <PackageId>NRobotsCore</PackageId>
-    <Description>.NET Core port of sjdirect/nrobots. A robots.txt parser written in c#. This is an unofficial fork of NRobots.txt on codeplex with extended functionality. For full documentation see https://nrobots.codeplex.com/.</Description>
+    <Description>A robots.txt parser written in C# that follows RFC 9309, the Robots Exclusion Protocol. .NET port of sjdirect/nrobots, an unofficial fork of NRobots.txt from CodePlex (shut down in 2021) with extended functionality. Documentation is on the project page.</Description>
     <PackageTags>utilities;common</PackageTags>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/Kemyke/nrobots-dotnet-core</PackageProjectUrl>
