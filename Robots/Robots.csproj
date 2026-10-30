@@ -5,7 +5,9 @@
     <TargetFrameworks Condition=" '$(OS)' == 'Windows_NT' ">$(TargetFrameworks);net462</TargetFrameworks>
     <RootNamespace>Robots</RootNamespace>
     <AssemblyName>Robots</AssemblyName>
+  </PropertyGroup>
 
+  <PropertyGroup Label="Packaging">
     <PackageId>NRobotsCore</PackageId>
     <Description>A robots.txt parser written in C# that follows RFC 9309, the Robots Exclusion Protocol. .NET port of sjdirect/nrobots, an unofficial fork of NRobots.txt from CodePlex (shut down in 2021) with extended functionality. Documentation is on the project page.</Description>
     <PackageTags>utilities;common</PackageTags>
