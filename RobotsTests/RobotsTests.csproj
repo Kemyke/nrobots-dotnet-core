@@ -4,11 +4,19 @@
     <TargetFrameworks>net10.0</TargetFrameworks>
     <TargetFrameworks Condition=" '$(OS)' == 'Windows_NT' ">$(TargetFrameworks);net462</TargetFrameworks>
     <RootNamespace>RobotsTests</RootNamespace>
-    <!-- AssemblyInfo.cs is kept as the source of the assembly attributes. -->
-    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <!-- Run every MSTest analyzer, so the tests keep following current MSTest practice. -->
     <MSTestAnalysisMode>All</MSTestAnalysisMode>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Every test builds its own state, so tests run in parallel, one worker per core. -->
+    <AssemblyAttribute Include="Microsoft.VisualStudio.TestTools.UnitTesting.ParallelizeAttribute">
+      <Scope>Microsoft.VisualStudio.TestTools.UnitTesting.ExecutionScope.MethodLevel</Scope>
+      <Scope_IsLiteral>true</Scope_IsLiteral>
+      <Workers>0</Workers>
+      <Workers_IsLiteral>true</Workers_IsLiteral>
+    </AssemblyAttribute>
+  </ItemGroup>
 
   <ItemGroup Condition=" '$(TargetFramework)' == 'net462' ">
     <Reference Include="System.Net.Http" />
