@@ -11,6 +11,7 @@ This project provides an easy-to-use class, implemented in C#, to work with robo
 
 ## Features:
 * Loading Robots.txt files by providing Url or file content
+* Async loading with cancellation, from a Url, Stream or TextReader
 * Easy-to-use and simple usage
 * Fluent interface
 * Supports multiple User-Agents
@@ -21,3 +22,51 @@ This project provides an easy-to-use class, implemented in C#, to work with robo
 * Crawl-delay entries
 * Supports comments
 * Supports wild cards (both * and $)
+
+## Supported frameworks:
+* .NET 10 (`net10.0`)
+* .NET Standard 2.0 (`netstandard2.0`), for .NET Core, Mono, Unity and others
+* .NET Framework 4.6.2 and later (`net462`)
+
+## Usage:
+```csharp
+// Downloads https://www.example.com/robots.txt
+var robots = new Robots.Robots();
+await robots.LoadAsync(new Uri("https://www.example.com"), cancellationToken);
+
+bool allowed = robots.Allowed("/private/page.html", "mybot");
+int crawlDelay = robots.GetCrawlDelay("mybot");
+IList<string> sitemaps = robots.GetSitemapUrls();
+```
+
+`new Robots.Robots()` shares one `HttpClient` between instances. To use your own, for example one from `IHttpClientFactory`, pass it to the constructor:
+
+```csharp
+var robots = new Robots.Robots(httpClientFactory.CreateClient());
+```
+
+robots.txt content you already have can be loaded from a string, `Stream` or `TextReader`:
+
+```csharp
+robots.LoadContent("User-agent: *\nDisallow: /private", "https://www.example.com");
+await robots.LoadAsync(stream, "https://www.example.com", cancellationToken);
+```
+
+Each `LoadAsync` overload has a synchronous `Load` counterpart. Prefer `LoadAsync` for Urls: on .NET Framework and .NET Standard, `Load(Uri)` blocks a thread until the download completes.
+
+## What's new in 2.0.0:
+* Targets `net10.0`, `netstandard2.0` and `net462`, replacing `net40`, `net451` and `netstandard1.1`.
+* `LoadAsync` overloads for `Uri`, `Stream` and `TextReader`, each taking a `CancellationToken`.
+* Downloads use `HttpClient` instead of the obsolete `WebRequest`, and a new `Robots(HttpClient)` constructor accepts your own client.
+
+Breaking changes:
+* `IRobots` has new `LoadAsync` members, so your own `IRobots` implementations must add them. Code that only calls `Robots` or `IRobots` needs no changes.
+* A failed download throws `HttpRequestException` instead of `WebException`.
+
+## Building:
+Requires the .NET 10 SDK (10.0.403 or later).
+
+```
+dotnet build Robots.slnx
+dotnet test --solution Robots.slnx
+```
