@@ -94,17 +94,123 @@ namespace Robots
             return LoadCoreAsync(robotsUri, true, cancellationToken);
         }
 
+        /// <summary>
+        /// Loads the robots.txt from a stream.
+        /// </summary>
+        /// <param name="stream">The input stream. May not be null.</param>
+        /// <param name="baseUrl"></param>
+        public void Load(Stream stream, string baseUrl)
+        {
+            Load(stream, ParseBaseUrl(baseUrl));
+        }
+
+        /// <summary>
+        /// Loads the robots.txt from a stream.
+        /// </summary>
+        /// <param name="stream">The input stream. May not be null.</param>
+        /// <param name="baseUrl"></param>
+        /// <param name="cancellationToken">Cancels the read.</param>
+        public Task LoadAsync(Stream stream, string baseUrl, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            return LoadAsync(stream, ParseBaseUrl(baseUrl), cancellationToken);
+        }
+
+        /// <summary>
+        /// Loads the robots.txt from a stream.
+        /// </summary>
+        /// <param name="stream">The input stream. May not be null.</param>
+        /// <param name="baseUri"></param>
+        public void Load(Stream stream, Uri baseUri)
+        {
+            Load(new StreamReader(stream), baseUri);
+        }
+
+        /// <summary>
+        /// Loads the robots.txt from a stream.
+        /// </summary>
+        /// <param name="stream">The input stream. May not be null.</param>
+        /// <param name="baseUri"></param>
+        /// <param name="cancellationToken">Cancels the read.</param>
+        public Task LoadAsync(Stream stream, Uri baseUri, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            return LoadAsync(new StreamReader(stream), baseUri, cancellationToken);
+        }
+
+        /// <summary>
+        /// Loads the robots.txt from the specified string.
+        /// </summary>
+        /// <param name="fileContent">String containing the robots.txt to load. May not be null</param>
+        /// <param name="baseUrl"></param>
+        public void LoadContent(string fileContent, string baseUrl)
+        {
+            LoadContent(fileContent, ParseBaseUrl(baseUrl));
+        }
+
+        /// <summary>
+        /// Loads the robots.txt from the specified string.
+        /// </summary>
+        /// <param name="fileContent">String containing the robots.txt to load. May not be null</param>
+        /// <param name="baseUri"></param>
+        public void LoadContent(string fileContent, Uri baseUri)
+        {
+            if (fileContent == null)
+                throw new ArgumentNullException("fileContent");
+
+            using(var sr = new StringReader(fileContent))
+            {
+                Load(sr, baseUri);
+            }
+        }
+
+        /// <summary>
+        /// Loads the robots.txt from the specified TextReader.
+        /// </summary>
+        /// <param name="reader">The TextReader used to feed the robots.txt data into the document. May not be null.</param>
+        /// <param name="baseUri"></param>
+        public void Load(TextReader reader, Uri baseUri)
+        {
+            if (reader == null)
+                throw new ArgumentNullException("reader");
+
+            // Completes synchronously on every target: the sync path only calls TextReader.ReadLine.
+            LoadCoreAsync(reader, baseUri, false, CancellationToken.None).GetAwaiter().GetResult();
+        }
+
+        /// <summary>
+        /// Loads the robots.txt from the specified TextReader.
+        /// </summary>
+        /// <param name="reader">The TextReader used to feed the robots.txt data into the document. May not be null.</param>
+        /// <param name="baseUri"></param>
+        /// <param name="cancellationToken">Cancels the read.</param>
+        public Task LoadAsync(TextReader reader, Uri baseUri, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            if (reader == null)
+                throw new ArgumentNullException("reader");
+
+            return LoadCoreAsync(reader, baseUri, true, cancellationToken);
+        }
+
+        private static Uri ParseBaseUrl(string baseUrl)
+        {
+            Uri baseUri;
+            if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out baseUri))
+                throw new ArgumentException("Invalid Url", "baseUrl");
+
+            return baseUri;
+        }
+
         private async Task LoadCoreAsync(Uri robotsUri, bool isAsync, CancellationToken cancellationToken)
         {
             var uriBuilder = new UriBuilder(robotsUri) { Path = "/robots.txt" };
 
+            // ResponseHeadersRead streams the body instead of buffering it, so it is read line by line below.
             using (var request = new HttpRequestMessage(HttpMethod.Get, uriBuilder.Uri))
 #if NET5_0_OR_GREATER
             using (var response = isAsync
-                ? await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false)
-                : _httpClient.Send(request, cancellationToken))
+                ? await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false)
+                : _httpClient.Send(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken))
 #else
-            using (var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false))
+            using (var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false))
 #endif
             {
                 response.EnsureSuccessStatusCode();
@@ -116,86 +222,39 @@ namespace Robots
 #else
                 using (var responseStream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
 #endif
+                using (var reader = new StreamReader(responseStream))
                 {
                     // RequestUri is the final address after any redirects.
                     var finalUri = response.RequestMessage.RequestUri;
-                    string baseUrl = string.Concat(finalUri.Scheme, "://", finalUri.Host);
-                    Load(responseStream, baseUrl);
+                    var baseUri = ParseBaseUrl(string.Concat(finalUri.Scheme, "://", finalUri.Host));
+                    await LoadCoreAsync(reader, baseUri, isAsync, cancellationToken).ConfigureAwait(false);
                 }
             }
         }
 
-        /// <summary>
-        /// Loads the robots.txt from a stream. 
-        /// </summary>
-        /// <param name="stream">The input stream. May not be null.</param>
-        /// <param name="baseUrl"></param>
-        public void Load(Stream stream, string baseUrl)
+        private async Task LoadCoreAsync(TextReader reader, Uri baseUri, bool isAsync, CancellationToken cancellationToken)
         {
-            Uri baseUri;
-            if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out baseUri))
-                throw new ArgumentException("Invalid Url", "baseUrl");
-            
-            Load(new StreamReader(stream), baseUri);
-        }
-
-        /// <summary>
-        /// Loads the robots.txt from a stream. 
-        /// </summary>
-        /// <param name="stream">The input stream. May not be null.</param>
-        /// <param name="baseUri"></param>
-        public void Load(Stream stream, Uri baseUri)
-        {
-            Load(new StreamReader(stream), baseUri);
-        }
-
-        /// <summary>
-        /// Loads the robots.txt from the specified string. 
-        /// </summary>
-        /// <param name="fileContent">String containing the robots.txt to load. May not be null</param>
-        /// <param name="baseUrl"></param>
-        public void LoadContent(string fileContent, string baseUrl)
-        {
-            Uri baseUri;
-            if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out baseUri))
-                throw new ArgumentException("Invalid Url", "baseUrl");
-
-            LoadContent(fileContent, new Uri(baseUrl));
-        }
-
-        /// <summary>
-        /// Loads the robots.txt from the specified string. 
-        /// </summary>
-        /// <param name="fileContent">String containing the robots.txt to load. May not be null</param>
-        /// <param name="baseUri"></param>
-        public void LoadContent(string fileContent, Uri baseUri)
-        {
-            if (fileContent == null)
-                throw new ArgumentNullException("fileContent");
-            
-            using(var sr = new StringReader(fileContent))
-            {
-                Load(sr, baseUri);
-            }
-        }
-
-        /// <summary>
-        /// Loads the robots.txt from the specified TextReader. 
-        /// </summary>
-        /// <param name="reader">The TextReader used to feed the robots.txt data into the document. May not be null.</param>
-        /// <param name="baseUri"></param>
-        public void Load(TextReader reader, Uri baseUri)
-        {
-            if (reader == null)
-                throw new ArgumentNullException("reader");
-
             _baseUri = baseUri;
 
             List<UserAgentEntry> userAgentsGroup = new List<UserAgentEntry>();
             bool addedEntriesToUserAgent = false;
             do
             {
-                string line = reader.ReadLine();
+                string line;
+                if (isAsync)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+#if NET7_0_OR_GREATER
+                    line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+#else
+                    line = await reader.ReadLineAsync().ConfigureAwait(false);
+#endif
+                }
+                else
+                {
+                    line = reader.ReadLine();
+                }
+
                 if (line == null)
                     break;
 

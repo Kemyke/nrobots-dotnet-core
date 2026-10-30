@@ -9,7 +9,7 @@
   </PropertyGroup>
 
   <PropertyGroup Label="Versioning">
-    <VersionPrefix>1.1.3</VersionPrefix>
+    <VersionPrefix>2.0.0</VersionPrefix>
   </PropertyGroup>
 
   <ItemGroup>

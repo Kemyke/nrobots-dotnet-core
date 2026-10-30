@@ -1,6 +1,8 @@
 using System;
 using System.IO;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Robots
 {
@@ -15,6 +17,13 @@ namespace Robots
         void Load(Uri robotsUri);
 
         /// <summary>
+        /// Load the robots.txt from a web resource
+        /// </summary>
+        /// <param name="robotsUri">The Uri of the web resource</param>
+        /// <param name="cancellationToken">Cancels the request.</param>
+        Task LoadAsync(Uri robotsUri, CancellationToken cancellationToken = default(CancellationToken));
+
+        /// <summary>
         /// Loads the robots.txt from a stream. 
         /// </summary>
         /// <param name="stream">The input stream. May not be null.</param>
@@ -25,8 +34,24 @@ namespace Robots
         /// Loads the robots.txt from a stream. 
         /// </summary>
         /// <param name="stream">The input stream. May not be null.</param>
+        /// <param name="baseUrl"></param>
+        /// <param name="cancellationToken">Cancels the read.</param>
+        Task LoadAsync(Stream stream, string baseUrl, CancellationToken cancellationToken = default(CancellationToken));
+
+        /// <summary>
+        /// Loads the robots.txt from a stream. 
+        /// </summary>
+        /// <param name="stream">The input stream. May not be null.</param>
         /// <param name="baseUri"></param>
         void Load(Stream stream, Uri baseUri);
+
+        /// <summary>
+        /// Loads the robots.txt from a stream. 
+        /// </summary>
+        /// <param name="stream">The input stream. May not be null.</param>
+        /// <param name="baseUri"></param>
+        /// <param name="cancellationToken">Cancels the read.</param>
+        Task LoadAsync(Stream stream, Uri baseUri, CancellationToken cancellationToken = default(CancellationToken));
 
         /// <summary>
         /// Loads the robots.txt from the specified string. 
@@ -48,6 +73,14 @@ namespace Robots
         /// <param name="reader">The TextReader used to feed the robots.txt data into the document. May not be null.</param>
         /// <param name="baseUri"></param>
         void Load(TextReader reader, Uri baseUri);
+
+        /// <summary>
+        /// Loads the robots.txt from the specified TextReader. 
+        /// </summary>
+        /// <param name="reader">The TextReader used to feed the robots.txt data into the document. May not be null.</param>
+        /// <param name="baseUri"></param>
+        /// <param name="cancellationToken">Cancels the read.</param>
+        Task LoadAsync(TextReader reader, Uri baseUri, CancellationToken cancellationToken = default(CancellationToken));
 
         bool Allowed(string url);
         bool Allowed(string url, string userAgent);
