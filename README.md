@@ -132,6 +132,7 @@ Breaking changes:
 * A 4xx response allows everything and a 5xx response disallows everything, where 1.x threw `WebException`.
 * Loading into an instance that already holds rules replaces them; 1.x added the new rules to the old ones. Use `AddContent`, `Add` or `AddAsync` for the 1.x behaviour.
 * Nullable annotations: `BaseUri`, `UserAgent` and some model properties are nullable, and a few misuses throw `InvalidOperationException` instead of `NullReferenceException` or `ArgumentNullException`.
+* `UserAgents` and `BrowserUserAgents` are static classes; their constants are unchanged.
 
 The [migration guide](MIGRATION.md) explains each change with examples.
 

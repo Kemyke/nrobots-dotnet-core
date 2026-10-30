@@ -18,6 +18,7 @@ NRobotsCore 2.0 keeps every 1.x method signature, so most code keeps compiling u
 | Filters or logs requests by User-Agent | [A User-Agent is now sent](#user-agent) |
 | Has nullable reference types enabled | [Check the new annotations](#nullable-annotations) |
 | Catches `NullReferenceException` or `ArgumentNullException` from `Allowed` or `RobotsBuilder` | [Check the smaller behaviour changes](#smaller-behaviour-changes) |
+| Creates or derives from `UserAgents` or `BrowserUserAgents` | [Use their constants directly](#smaller-behaviour-changes) |
 
 ## Supported frameworks
 
