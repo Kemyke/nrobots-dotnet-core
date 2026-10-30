@@ -20,21 +20,21 @@ namespace RobotsTests
             _beforeLine = beforeLine;
         }
 
-        public override string ReadLine()
+        public override string? ReadLine()
         {
             _beforeLine(_linesRead++);
             return _inner.ReadLine();
         }
 
-        public override Task<string> ReadLineAsync()
+        public override Task<string?> ReadLineAsync()
         {
             return Task.FromResult(ReadLine());
         }
 
 #if NET7_0_OR_GREATER
-        public override ValueTask<string> ReadLineAsync(CancellationToken cancellationToken)
+        public override ValueTask<string?> ReadLineAsync(CancellationToken cancellationToken)
         {
-            return new ValueTask<string>(ReadLine());
+            return new ValueTask<string?>(ReadLine());
         }
 #endif
 

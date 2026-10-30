@@ -6,6 +6,6 @@
             : base(EntryType.Sitemap)
         {}
 
-        public string SitemapUrl { get; set; }
+        public string SitemapUrl { get; set; } = string.Empty;
     }
 }

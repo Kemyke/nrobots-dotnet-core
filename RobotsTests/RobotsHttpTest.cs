@@ -151,7 +151,7 @@ namespace RobotsTests
         [TestMethod]
         public void Default_client_sends_the_library_User_Agent()
         {
-            var expected = "NRobotsCore/" + typeof(Robots.Robots).Assembly.GetName().Version.ToString(3);
+            var expected = "NRobotsCore/" + typeof(Robots.Robots).Assembly.GetName().Version!.ToString(3);
 
             Assert.AreEqual(expected, new Robots.Robots().UserAgent);
         }

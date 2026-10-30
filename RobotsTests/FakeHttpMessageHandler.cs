@@ -20,7 +20,7 @@ namespace RobotsTests
             _respond = respond;
         }
 
-        public List<Uri> RequestedUris { get; } = new List<Uri>();
+        public List<Uri?> RequestedUris { get; } = new List<Uri?>();
 
         /// <summary>
         /// The User-Agent header of each request, empty when none was sent.
@@ -35,7 +35,7 @@ namespace RobotsTests
         /// Returns <paramref name="content"/> for every request, as if served from <paramref name="finalUri"/>
         /// (the requested address when null).
         /// </summary>
-        public static FakeHttpMessageHandler Serving(string content, Uri finalUri = null)
+        public static FakeHttpMessageHandler Serving(string content, Uri? finalUri = null)
         {
             return new FakeHttpMessageHandler(request => new HttpResponseMessage(HttpStatusCode.OK)
             {

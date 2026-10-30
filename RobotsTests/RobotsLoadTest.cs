@@ -119,7 +119,7 @@ namespace RobotsTests
         [TestMethod]
         public void Constructor_rejects_a_null_client()
         {
-            Assert.ThrowsExactly<ArgumentNullException>(() => new Robots.Robots(null));
+            Assert.ThrowsExactly<ArgumentNullException>(() => new Robots.Robots(null!));
         }
 
 #if NET5_0_OR_GREATER

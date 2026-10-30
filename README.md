@@ -59,8 +59,7 @@ Each load replaces the rules loaded before. To add rules to them instead, for ex
 
 ```csharp
 await robots.LoadAsync(new Uri("https://www.example.com"), cancellationToken);
-robots.AddContent("User-agent: *
-Disallow: /search");
+robots.AddContent("User-agent: *\nDisallow: /search");
 ```
 
 Each `LoadAsync` overload has a synchronous `Load` counterpart. Prefer `LoadAsync` for Urls: on .NET Framework and .NET Standard, `Load(Uri)` blocks a thread until the download completes.
@@ -93,17 +92,19 @@ Build with `RobotsBuilder` on one thread; share the result once it is built.
 * `AddContent`, `Add` and `AddAsync` add rules to the loaded ones.
 * Downloads follow RFC 9309 for status codes and size, and send a configurable `User-Agent`.
 * Safe to query from several threads, also while loading or adding rules.
+* Annotated for nullable reference types, and marked trimmable and AOT-compatible on .NET 10.
 
 Breaking changes:
 * `IRobots` has new `LoadAsync` and `Add` members, so your own `IRobots` implementations must add them. Code that only calls `Robots` or `IRobots` needs no changes.
 * A failed download throws `HttpRequestException` instead of `WebException`.
 * A 4xx response allows everything and a 5xx response disallows everything, where 1.x threw `WebException`.
 * Loading into an instance that already holds rules replaces them; 1.x added the new rules to the old ones. Use `AddContent`, `Add` or `AddAsync` for the 1.x behaviour.
+* Nullable annotations: `BaseUri`, `UserAgent` and some model properties are nullable, and a few misuses throw `InvalidOperationException` instead of `NullReferenceException` or `ArgumentNullException`.
 
 The [migration guide](MIGRATION.md) explains each change with examples.
 
 ## Building:
-Requires the .NET 10 SDK (10.0.403 or later).
+Requires the .NET 10 SDK (10.0.403 or later). The build treats warnings as errors, with nullable reference types and the recommended .NET analyzers enabled.
 
 ```
 dotnet build Robots.slnx

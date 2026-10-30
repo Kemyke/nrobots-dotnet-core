@@ -39,10 +39,10 @@ namespace RobotsTests
             Assert.IsTrue(actual);
         }
 
-        internal virtual Entry CreateEntry()
+        internal virtual Entry? CreateEntry()
         {
             // TODO: Instantiate an appropriate concrete class.
-            Entry target = null;
+            Entry? target = null;
             return target;
         }
 
@@ -51,7 +51,7 @@ namespace RobotsTests
         {
             var baseUri = new Uri("http://www.microsoft.com");
             const string entryText = "User-Agent: *";
-            Entry entry;
+            Entry? entry;
             bool actual = Entry.TryParse(baseUri, entryText, out entry);
             Assert.IsNotNull(entry);
             Assert.IsTrue(actual);
@@ -64,7 +64,7 @@ namespace RobotsTests
         {
             var baseUri = new Uri("http://www.microsoft.com");
             const string entryText = "User-Agent:";
-            Entry entry;
+            Entry? entry;
             bool actual = Entry.TryParse(baseUri, entryText, out entry);
             Assert.IsNull(entry);
             Assert.IsFalse(actual);
@@ -75,13 +75,13 @@ namespace RobotsTests
         {
             var baseUri = new Uri("http://www.microsoft.com");
             const string entryText = "disallow: /web  #comment";
-            Entry entry;
+            Entry? entry;
             bool actual = Entry.TryParse(baseUri, entryText, out entry);
             Assert.IsNotNull(entry);
             Assert.IsTrue(actual);
             Assert.AreEqual(EntryType.Disallow, entry.Type);
             Assert.IsNotNull(((DisallowEntry)entry).Url);
-            Assert.AreEqual("/web", ((DisallowEntry)entry).Url.LocalPath);
+            Assert.AreEqual("/web", ((DisallowEntry)entry).Url!.LocalPath);
             Assert.AreEqual("comment", entry.Comment);
         }
 
@@ -90,7 +90,7 @@ namespace RobotsTests
         {
             var baseUri = new Uri("http://www.microsoft.com");
             const string entryText = "disallow:";
-            Entry entry;
+            Entry? entry;
             bool actual = Entry.TryParse(baseUri, entryText, out entry);
             Assert.IsNull(entry);
             Assert.IsFalse(actual);
@@ -101,7 +101,7 @@ namespace RobotsTests
         {
             var baseUri = new Uri("http://www.microsoft.com");
             const string entryText = "disallow:  ";
-            Entry entry;
+            Entry? entry;
             bool actual = Entry.TryParse(baseUri, entryText, out entry);
             Assert.IsNull(entry);
             Assert.IsFalse(actual);
@@ -112,13 +112,13 @@ namespace RobotsTests
         {
             var baseUri = new Uri("http://www.microsoft.com");
             const string entryText = "allow: /web";
-            Entry entry;
+            Entry? entry;
             bool actual = Entry.TryParse(baseUri, entryText, out entry);
             Assert.IsNotNull(entry);
             Assert.IsTrue(actual);
             Assert.AreEqual(EntryType.Allow, entry.Type);
             Assert.IsNotNull(((AllowEntry)entry).Url);
-            Assert.AreEqual("/web", ((AllowEntry)entry).Url.LocalPath);
+            Assert.AreEqual("/web", ((AllowEntry)entry).Url!.LocalPath);
         }
 
         [TestMethod]
@@ -126,7 +126,7 @@ namespace RobotsTests
         {
             var baseUri = new Uri("http://www.microsoft.com");
             const string entryText = "#comment";
-            Entry entry;
+            Entry? entry;
             bool actual = Entry.TryParse(baseUri, entryText, out entry);
             Assert.IsNotNull(entry);
             Assert.IsTrue(actual);
@@ -137,14 +137,14 @@ namespace RobotsTests
         [TestMethod]
         public void TryParse_null_base_uri_Test()
         {
-            Assert.ThrowsExactly<ArgumentNullException>(() => Entry.TryParse(null, "", out _));
+            Assert.ThrowsExactly<ArgumentNullException>(() => Entry.TryParse(null!, "", out _));
         }
 
         [TestMethod]
         public void TryParse_empty_string_Test()
         {
             var baseUri = new Uri("http://www.microsoft.com");
-            Entry entry;
+            Entry? entry;
             bool actual = Entry.TryParse(baseUri, "", out entry);
             Assert.IsFalse(actual);
             Assert.IsNull(entry);

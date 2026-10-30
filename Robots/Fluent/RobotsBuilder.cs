@@ -5,7 +5,8 @@ namespace Robots.Fluent
 {
     public class RobotsBuilder
     {
-        private UserAgentEntry _lastUserAgent;
+        private UserAgentEntry? _lastUserAgent;
+        private readonly Uri _baseUri;
         private readonly Robots _robots;
 
         public Robots Robots
@@ -15,12 +16,24 @@ namespace Robots.Fluent
 
         private RobotsBuilder(Uri baseUri)
         {
+            _baseUri = baseUri;
             _robots = new Robots {BaseUri = baseUri};
         }
 
         public static RobotsBuilder Create(Uri baseUri)
         {
             return new RobotsBuilder(baseUri);
+        }
+
+        private UserAgentEntry LastUserAgent
+        {
+            get
+            {
+                if (_lastUserAgent == null)
+                    throw new InvalidOperationException("Call ForUserAgent before adding Allow or Disallow rules.");
+
+                return _lastUserAgent;
+            }
         }
 
         public RobotsBuilder ForUserAgent(string userAgent)
@@ -39,8 +52,8 @@ namespace Robots.Fluent
 
         public RobotsBuilder DisallowWithComment(string url, string comment)
         {
-            var disallowEntry = new DisallowEntry { Url = new Uri(_robots.BaseUri, url), Comment = comment };
-            _lastUserAgent.AddEntry(disallowEntry);
+            var disallowEntry = new DisallowEntry { Url = new Uri(_baseUri, url), Comment = comment };
+            LastUserAgent.AddEntry(disallowEntry);
 
             return this;
         }
@@ -53,7 +66,7 @@ namespace Robots.Fluent
         public RobotsBuilder DisallowWithComment(Uri uri, string comment)
         {
             var disallowEntry = new DisallowEntry { Url = uri, Comment = comment };
-            _lastUserAgent.AddEntry(disallowEntry);
+            LastUserAgent.AddEntry(disallowEntry);
 
             return this;
         }
@@ -66,8 +79,8 @@ namespace Robots.Fluent
 
         public RobotsBuilder AllowWithComment(string url, string comment)
         {
-            var allowEntry = new AllowEntry { Url = new Uri(_robots.BaseUri, url), Comment = comment };
-            _lastUserAgent.AddEntry(allowEntry);
+            var allowEntry = new AllowEntry { Url = new Uri(_baseUri, url), Comment = comment };
+            LastUserAgent.AddEntry(allowEntry);
 
             return this;
         }
@@ -80,7 +93,7 @@ namespace Robots.Fluent
         public RobotsBuilder AllowWithComment(Uri uri, string comment)
         {
             var allowEntry = new AllowEntry { Url = uri, Comment = comment };
-            _lastUserAgent.AddEntry(allowEntry);
+            LastUserAgent.AddEntry(allowEntry);
 
             return this;
         }

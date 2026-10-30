@@ -10,7 +10,7 @@ namespace Robots.Model
             : base(EntryType.UserAgent)
         {}
 
-        public string UserAgent { get; set; }
+        public string UserAgent { get; set; } = string.Empty;
 
         private readonly List<Entry> _entries = new List<Entry>();
 
@@ -38,7 +38,7 @@ namespace Robots.Model
             }
         }
 
-        public CrawlDelayEntry CrawlDelayEntry 
+        public CrawlDelayEntry? CrawlDelayEntry
         {
             get
             {
@@ -46,7 +46,7 @@ namespace Robots.Model
             }
         }
 
-        public SitemapEntry SitemapEntry
+        public SitemapEntry? SitemapEntry
         {
             get
             {
@@ -57,7 +57,7 @@ namespace Robots.Model
         public void AddEntry(Entry entry)
         {
             if (entry == null)
-                throw new ArgumentNullException("entry");
+                throw new ArgumentNullException(nameof(entry));
 
             _entries.Add(entry);
         }

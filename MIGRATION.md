@@ -1,6 +1,6 @@
 # Migrating from 1.x to 2.x
 
-NRobotsCore 2.0 keeps every 1.x method signature, so most code keeps compiling unchanged. The changes are in which frameworks are supported, how downloads behave, and the `IRobots` interface. This guide lists what to check, with examples.
+NRobotsCore 2.0 keeps every 1.x method signature, so most code keeps compiling unchanged. The changes are in which frameworks are supported, how downloads behave, how repeated loads combine, the `IRobots` interface, and nullable annotations. This guide lists what to check, with examples.
 
 ## Checklist
 
@@ -15,6 +15,8 @@ NRobotsCore 2.0 keeps every 1.x method signature, so most code keeps compiling u
 | Loads from a Url in a server or UI app | [Use `LoadAsync`](#prefer-loadasync) |
 | Passes its own `HttpClient` with a custom handler and calls `Load(Uri)` | [Check the handler supports `Send`](#your-own-httpclient) |
 | Filters or logs requests by User-Agent | [A User-Agent is now sent](#user-agent) |
+| Has nullable reference types enabled | [Check the new annotations](#nullable-annotations) |
+| Catches `NullReferenceException` or `ArgumentNullException` from `Allowed` or `RobotsBuilder` | [Check the smaller behaviour changes](#smaller-behaviour-changes) |
 
 ## Supported frameworks
 
@@ -27,6 +29,8 @@ NRobotsCore 2.0 keeps every 1.x method signature, so most code keeps compiling u
 Projects on .NET Framework 4.0–4.6.1 or on platforms that only support .NET Standard 1.x must stay on 1.x or move to a supported framework.
 
 The assembly version is now 2.0.0.0, and the assembly carries the package's authors and copyright instead of the old template values.
+
+On .NET 10 the library is marked trimmable and AOT-compatible, so it can be used in trimmed and Native AOT apps without warnings.
 
 ## IRobots has new members
 
@@ -50,7 +54,7 @@ Code that only *calls* `IRobots` is unaffected. A class that *implements* it, su
 ```csharp
 public class FakeRobots : IRobots
 {
-    // ... the 1.x members as before ...
+    // ... the 1.x members as before; with nullable enabled, declare BaseUri as Uri? ...
 
     public Task LoadAsync(Uri robotsUri, CancellationToken cancellationToken = default(CancellationToken))
     {
@@ -326,6 +330,38 @@ With your own `HttpClient`, `UserAgent` starts as `null` and the client's `Defau
 ```csharp
 bool allowed = robots.Allowed("/page.html", "MyCrawler");
 ```
+
+## Nullable annotations
+
+2.x is annotated for nullable reference types. If your project has `<Nullable>enable</Nullable>`, the compiler now tells you where a value can be null:
+
+| Member | Type | Null when |
+|---|---|---|
+| `Robots.BaseUri`, `IRobots.BaseUri` | `Uri?` | Nothing has been loaded and it hasn't been set |
+| `Robots.UserAgent` | `string?` | You passed your own `HttpClient`, or set it to null |
+| `Entry.Comment` | `string?` | The line had no comment |
+| `UrlEntry.Url` | `Uri?` | Never for parsed rules; only if you create an entry yourself without one |
+| `UserAgentEntry.CrawlDelayEntry`, `UserAgentEntry.SitemapEntry` | nullable | The group has no such line |
+| `Entry.TryParse(..., out Entry? entry)` | `[NotNullWhen(true)]` | `entry` is not null when it returns true |
+
+```csharp
+// BaseUri is null until something is loaded or it is set
+Uri? baseUri = robots.BaseUri;
+
+if (baseUri != null && Entry.TryParse(baseUri, line, out var entry))
+{
+    Console.WriteLine(entry.Type); // no warning: entry is not null here
+}
+```
+
+`UserAgentEntry.UserAgent` and `SitemapEntry.SitemapUrl` now start as an empty string instead of null.
+
+## Smaller behaviour changes
+
+* `Crawl-delay` values are parsed the same way on every machine. 1.x used the current culture.
+* Checking a relative Url with `Allowed` on an instance that has rules but no `BaseUri`, for example after setting `BaseUri` to null, throws `InvalidOperationException` with a clear message, instead of `ArgumentNullException`. An instance without rules still allows everything.
+* `RobotsBuilder.Allow` or `Disallow` before `ForUserAgent` throws `InvalidOperationException`, instead of `NullReferenceException`.
+* An `AllowEntry` or `DisallowEntry` you create without a `Url` never matches, instead of throwing `NullReferenceException` from `Allowed`.
 
 ## Thread safety
 

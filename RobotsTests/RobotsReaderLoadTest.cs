@@ -28,7 +28,7 @@ Sitemap: http://www.test.com/sitemap.xml";
             return new MemoryStream(Encoding.UTF8.GetBytes(Content));
         }
 
-        private static void AssertLoaded(Robots.IRobots robots)
+        private static void AssertLoaded(Robots.Robots robots)
         {
             Assert.AreEqual(new Uri(BaseUrl), robots.BaseUri);
             Assert.IsFalse(robots.Allowed("/private"));
@@ -141,14 +141,14 @@ Sitemap: http://www.test.com/sitemap.xml";
         public async Task LoadAsync_stream_rejects_a_null_stream()
         {
             var robots = new Robots.Robots();
-            await Assert.ThrowsExactlyAsync<ArgumentNullException>(() => robots.LoadAsync((Stream)null, new Uri(BaseUrl), TestContext.CancellationToken));
+            await Assert.ThrowsExactlyAsync<ArgumentNullException>(() => robots.LoadAsync((Stream)null!, new Uri(BaseUrl), TestContext.CancellationToken));
         }
 
         [TestMethod]
         public async Task LoadAsync_reader_rejects_a_null_reader()
         {
             var robots = new Robots.Robots();
-            await Assert.ThrowsExactlyAsync<ArgumentNullException>(() => robots.LoadAsync((TextReader)null, new Uri(BaseUrl), TestContext.CancellationToken));
+            await Assert.ThrowsExactlyAsync<ArgumentNullException>(() => robots.LoadAsync((TextReader)null!, new Uri(BaseUrl), TestContext.CancellationToken));
         }
 
         [TestMethod]

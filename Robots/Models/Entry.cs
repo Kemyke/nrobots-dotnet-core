@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 
 namespace Robots.Model
@@ -18,7 +19,7 @@ namespace Robots.Model
 
         public EntryType Type { get; private set; }
 
-        public string Comment { get; set; }
+        public string? Comment { get; set; }
 
         public bool HasComment { get { return !string.IsNullOrEmpty(Comment); } }
 
@@ -43,10 +44,10 @@ namespace Robots.Model
             throw new InvalidOperationException();
         }
 
-        public static bool TryParse(Uri baseUri, string entryText, out Entry entry)
+        public static bool TryParse(Uri baseUri, string entryText, [NotNullWhen(true)] out Entry? entry)
         {
             if (baseUri == null)
-                throw new ArgumentNullException("baseUri");
+                throw new ArgumentNullException(nameof(baseUri));
 
 
             entry = null;
@@ -97,10 +98,10 @@ namespace Robots.Model
                 else if (entryText.StartsWith(DISALLOW_KEYWORD, StringComparison.OrdinalIgnoreCase))
                 {
                     type = EntryType.Disallow;
-                    bool inverted = entryText.EndsWith("$");
+                    bool inverted = EndsWithDollar(entryText);
                     string value = entryText.Substring(DISALLOW_KEYWORD.Length).Trim();
 
-                    Uri url = null;
+                    Uri? url;
                     if (!string.IsNullOrEmpty(value) && Uri.TryCreate(baseUri, value, out url))
                     {
                         entry = CreateEntry(type);
@@ -112,10 +113,10 @@ namespace Robots.Model
                 else if (entryText.StartsWith(ALLOW_KEYWORD, StringComparison.OrdinalIgnoreCase))
                 {
                     type = EntryType.Allow;
-                    bool inverted = entryText.EndsWith("$");
+                    bool inverted = EndsWithDollar(entryText);
                     string value = entryText.Substring(ALLOW_KEYWORD.Length).Trim().TrimEnd('?');
 
-                    Uri url;
+                    Uri? url;
                     if (Uri.TryCreate(baseUri, value, out url))
                     {
                         entry = CreateEntry(type);
@@ -132,14 +133,10 @@ namespace Robots.Model
                     entry = CreateEntry(type);
                     entry.Comment = comment;
 
-                    try
-                    {
-                        ((CrawlDelayEntry)entry).CrawlDelay = Convert.ToInt32(value);
-                    }
-                    catch
-                    {
-                        ((CrawlDelayEntry)entry).CrawlDelay = 0;
-                    }
+                    int crawlDelay;
+                    ((CrawlDelayEntry)entry).CrawlDelay = int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out crawlDelay)
+                        ? crawlDelay
+                        : 0;
                 }
                 else if (entryText.StartsWith(SITEMAP_KEYWORD, StringComparison.OrdinalIgnoreCase))
                 {
@@ -172,6 +169,11 @@ namespace Robots.Model
             if (entry == null)
                 return false;
             return true;
+        }
+
+        private static bool EndsWithDollar(string text)
+        {
+            return text.Length > 0 && text[text.Length - 1] == '$';
         }
     }
 }

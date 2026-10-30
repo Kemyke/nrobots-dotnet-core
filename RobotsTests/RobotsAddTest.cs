@@ -194,11 +194,11 @@ namespace RobotsTests
         {
             var robots = LoadedRobots();
 
-            Assert.ThrowsExactly<ArgumentNullException>(() => robots.AddContent(null));
-            Assert.ThrowsExactly<ArgumentNullException>(() => robots.Add((Stream)null));
-            Assert.ThrowsExactly<ArgumentNullException>(() => robots.Add((TextReader)null));
-            await Assert.ThrowsExactlyAsync<ArgumentNullException>(() => robots.AddAsync((Stream)null, TestContext.CancellationToken));
-            await Assert.ThrowsExactlyAsync<ArgumentNullException>(() => robots.AddAsync((TextReader)null, TestContext.CancellationToken));
+            Assert.ThrowsExactly<ArgumentNullException>(() => robots.AddContent(null!));
+            Assert.ThrowsExactly<ArgumentNullException>(() => robots.Add((Stream)null!));
+            Assert.ThrowsExactly<ArgumentNullException>(() => robots.Add((TextReader)null!));
+            await Assert.ThrowsExactlyAsync<ArgumentNullException>(() => robots.AddAsync((Stream)null!, TestContext.CancellationToken));
+            await Assert.ThrowsExactlyAsync<ArgumentNullException>(() => robots.AddAsync((TextReader)null!, TestContext.CancellationToken));
         }
     }
 }

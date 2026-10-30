@@ -8,7 +8,7 @@ namespace Robots
 {
     public interface IRobots
     {
-        Uri BaseUri { get; set; }
+        Uri? BaseUri { get; set; }
 
         /// <summary>
         /// Load the robots.txt from a web resource

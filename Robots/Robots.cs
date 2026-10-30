@@ -19,17 +19,19 @@ namespace Robots
 
         private readonly HttpClient _httpClient;
 
-        private string _userAgent;
+        private string? _userAgent;
 
         // Shared so repeated loads reuse connections instead of exhausting sockets.
         private static readonly HttpClient DefaultHttpClient = CreateDefaultHttpClient();
 
-        private static readonly string DefaultUserAgent = "NRobotsCore/" + typeof(Robots).Assembly.GetName().Version.ToString(3);
+        private static readonly string DefaultUserAgent = "NRobotsCore/" + (typeof(Robots).Assembly.GetName().Version ?? new Version(0, 0, 0)).ToString(3);
 
         // RFC 9309 2.5: crawlers must parse at least 500 KiB of a robots.txt and may ignore the rest.
         private const int MaxDownloadBytes = 500 * 1024;
 
         private const string DisallowAllContent = "User-agent: *\nDisallow: /";
+
+        private static readonly char[] PathSeparator = { '/' };
 
         #endregion
 
@@ -53,7 +55,7 @@ namespace Robots
         public Robots(HttpClient httpClient)
         {
             if (httpClient == null)
-                throw new ArgumentNullException("httpClient");
+                throw new ArgumentNullException(nameof(httpClient));
 
             _httpClient = httpClient;
         }
@@ -72,7 +74,7 @@ namespace Robots
 
         #region Accessors
 
-        public Uri BaseUri
+        public Uri? BaseUri
         {
             get { return Volatile.Read(ref _state).BaseUri; }
             set
@@ -101,13 +103,13 @@ namespace Robots
         /// This only sets the HTTP header. To check rules for your crawler, pass its name to Allowed.
         /// </remarks>
         /// <exception cref="ArgumentException">The value is not a valid User-Agent header.</exception>
-        public string UserAgent
+        public string? UserAgent
         {
             get { return Volatile.Read(ref _userAgent); }
             set
             {
                 if (value != null && !IsValidUserAgent(value))
-                    throw new ArgumentException("Not a valid User-Agent header value.", "value");
+                    throw new ArgumentException("Not a valid User-Agent header value.", nameof(value));
 
                 Volatile.Write(ref _userAgent, value);
             }
@@ -176,7 +178,7 @@ namespace Robots
         public void Load(Stream stream, Uri baseUri)
         {
             if (stream == null)
-                throw new ArgumentNullException("stream");
+                throw new ArgumentNullException(nameof(stream));
 
             LoadCoreAsync(stream, baseUri, false, CancellationToken.None).GetAwaiter().GetResult();
         }
@@ -190,7 +192,7 @@ namespace Robots
         public Task LoadAsync(Stream stream, Uri baseUri, CancellationToken cancellationToken = default(CancellationToken))
         {
             if (stream == null)
-                throw new ArgumentNullException("stream");
+                throw new ArgumentNullException(nameof(stream));
 
             return LoadCoreAsync(stream, baseUri, true, cancellationToken);
         }
@@ -213,7 +215,7 @@ namespace Robots
         public void LoadContent(string fileContent, Uri baseUri)
         {
             if (fileContent == null)
-                throw new ArgumentNullException("fileContent");
+                throw new ArgumentNullException(nameof(fileContent));
 
             using(var sr = new StringReader(fileContent))
             {
@@ -229,10 +231,10 @@ namespace Robots
         public void Load(TextReader reader, Uri baseUri)
         {
             if (reader == null)
-                throw new ArgumentNullException("reader");
+                throw new ArgumentNullException(nameof(reader));
 
             // Completes synchronously on every target: the sync path only calls TextReader.ReadLine.
-            LoadCoreAsync(reader, baseUri, false, CancellationToken.None, null).GetAwaiter().GetResult();
+            LoadCoreAsync(reader, baseUri, false, null, CancellationToken.None).GetAwaiter().GetResult();
         }
 
         /// <summary>
@@ -244,9 +246,9 @@ namespace Robots
         public Task LoadAsync(TextReader reader, Uri baseUri, CancellationToken cancellationToken = default(CancellationToken))
         {
             if (reader == null)
-                throw new ArgumentNullException("reader");
+                throw new ArgumentNullException(nameof(reader));
 
-            return LoadCoreAsync(reader, baseUri, true, cancellationToken, null);
+            return LoadCoreAsync(reader, baseUri, true, null, cancellationToken);
         }
 
         /// <summary>
@@ -258,7 +260,7 @@ namespace Robots
         public void AddContent(string fileContent)
         {
             if (fileContent == null)
-                throw new ArgumentNullException("fileContent");
+                throw new ArgumentNullException(nameof(fileContent));
 
             using (var sr = new StringReader(fileContent))
             {
@@ -274,7 +276,7 @@ namespace Robots
         public void Add(Stream stream)
         {
             if (stream == null)
-                throw new ArgumentNullException("stream");
+                throw new ArgumentNullException(nameof(stream));
 
             AddCoreAsync(stream, RequireBaseUri(), false, CancellationToken.None).GetAwaiter().GetResult();
         }
@@ -288,7 +290,7 @@ namespace Robots
         public Task AddAsync(Stream stream, CancellationToken cancellationToken = default(CancellationToken))
         {
             if (stream == null)
-                throw new ArgumentNullException("stream");
+                throw new ArgumentNullException(nameof(stream));
 
             return AddCoreAsync(stream, RequireBaseUri(), true, cancellationToken);
         }
@@ -301,7 +303,7 @@ namespace Robots
         public void Add(TextReader reader)
         {
             if (reader == null)
-                throw new ArgumentNullException("reader");
+                throw new ArgumentNullException(nameof(reader));
 
             // Completes synchronously on every target: the sync path only calls TextReader.ReadLine.
             AddCoreAsync(reader, RequireBaseUri(), false, CancellationToken.None).GetAwaiter().GetResult();
@@ -316,7 +318,7 @@ namespace Robots
         public Task AddAsync(TextReader reader, CancellationToken cancellationToken = default(CancellationToken))
         {
             if (reader == null)
-                throw new ArgumentNullException("reader");
+                throw new ArgumentNullException(nameof(reader));
 
             return AddCoreAsync(reader, RequireBaseUri(), true, cancellationToken);
         }
@@ -332,9 +334,9 @@ namespace Robots
 
         private static Uri ParseBaseUrl(string baseUrl)
         {
-            Uri baseUri;
+            Uri? baseUri;
             if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out baseUri))
-                throw new ArgumentException("Invalid Url", "baseUrl");
+                throw new ArgumentException("Invalid Url", nameof(baseUrl));
 
             return baseUri;
         }
@@ -360,7 +362,7 @@ namespace Robots
 #endif
                 {
                     // RequestUri is the final address after any redirects.
-                    var finalUri = (response.RequestMessage ?? request).RequestUri;
+                    var finalUri = (response.RequestMessage ?? request).RequestUri ?? uriBuilder.Uri;
                     var baseUri = ParseBaseUrl(string.Concat(finalUri.Scheme, "://", finalUri.Host));
 
                     // RFC 9309 2.3.1.3: a 4xx means there is no robots.txt, so everything is allowed.
@@ -376,7 +378,7 @@ namespace Robots
                     {
                         using (var reader = new StringReader(DisallowAllContent))
                         {
-                            await LoadCoreAsync(reader, baseUri, false, cancellationToken, null).ConfigureAwait(false);
+                            await LoadCoreAsync(reader, baseUri, false, null, cancellationToken).ConfigureAwait(false);
                         }
                         return;
                     }
@@ -405,15 +407,15 @@ namespace Robots
             // leaveOpen: the caller owns the stream, so disposing the reader must not close it.
             using (var reader = new StreamReader(stream, Encoding.UTF8, true, 1024, true))
             {
-                await LoadCoreAsync(reader, baseUri, isAsync, cancellationToken, stream as LengthLimitedStream).ConfigureAwait(false);
+                await LoadCoreAsync(reader, baseUri, isAsync, stream as LengthLimitedStream, cancellationToken).ConfigureAwait(false);
             }
         }
 
-        private async Task LoadCoreAsync(TextReader reader, Uri baseUri, bool isAsync, CancellationToken cancellationToken, LengthLimitedStream limitedStream)
+        private async Task LoadCoreAsync(TextReader reader, Uri baseUri, bool isAsync, LengthLimitedStream? limitedStream, CancellationToken cancellationToken)
         {
             // Parse fully before publishing: readers keep seeing the previous load until then,
             // and a failed or cancelled load leaves it unchanged.
-            var entries = await ParseAsync(reader, baseUri, isAsync, cancellationToken, limitedStream).ConfigureAwait(false);
+            var entries = await ParseAsync(reader, baseUri, isAsync, limitedStream, cancellationToken).ConfigureAwait(false);
 
             // Replaces the previous load instead of adding to it.
             Volatile.Write(ref _state, new State(baseUri, entries));
@@ -430,7 +432,7 @@ namespace Robots
 
         private async Task AddCoreAsync(TextReader reader, Uri baseUri, bool isAsync, CancellationToken cancellationToken)
         {
-            var added = await ParseAsync(reader, baseUri, isAsync, cancellationToken, null).ConfigureAwait(false);
+            var added = await ParseAsync(reader, baseUri, isAsync, null, cancellationToken).ConfigureAwait(false);
 
             // Merge into the rules published now, and retry if a load or another add published in the meantime.
             State current, updated;
@@ -442,7 +444,7 @@ namespace Robots
             while (Interlocked.CompareExchange(ref _state, updated, current) != current);
         }
 
-        private static async Task<List<Entry>> ParseAsync(TextReader reader, Uri baseUri, bool isAsync, CancellationToken cancellationToken, LengthLimitedStream limitedStream)
+        private static async Task<List<Entry>> ParseAsync(TextReader reader, Uri baseUri, bool isAsync, LengthLimitedStream? limitedStream, CancellationToken cancellationToken)
         {
             List<Entry> entries = new List<Entry>();
             List<UserAgentEntry> userAgentsGroup = new List<UserAgentEntry>();
@@ -450,10 +452,10 @@ namespace Robots
 
             // Each line is parsed only once the next one has been read, so the last line can be
             // dropped when the size limit cut it off part-way.
-            string pendingLine = null;
+            string? pendingLine = null;
             do
             {
-                string line;
+                string? line;
                 if (isAsync)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
@@ -495,7 +497,7 @@ namespace Robots
                 {
                     var addedGroup = (UserAgentEntry)entry;
                     int index = merged.FindIndex(e => e.Type == EntryType.UserAgent
-                        && string.Compare(((UserAgentEntry)e).UserAgent, addedGroup.UserAgent, StringComparison.OrdinalIgnoreCase) == 0);
+                        && string.Equals(((UserAgentEntry)e).UserAgent, addedGroup.UserAgent, StringComparison.OrdinalIgnoreCase));
                     if (index >= 0)
                     {
                         merged[index] = Combine((UserAgentEntry)merged[index], addedGroup);
@@ -525,7 +527,7 @@ namespace Robots
             if (string.IsNullOrEmpty(line))
                 return;
 
-            Entry entry;
+            Entry? entry;
             if (!Entry.TryParse(baseUri, line, out entry))
                 return;
 
@@ -538,7 +540,7 @@ namespace Robots
                     addedEntriesToUserAgent = false;
                 }
 
-                UserAgentEntry foundUserAgentEntry = FindExplicitUserAgentEntry(entries, userAgentEntry.UserAgent);
+                UserAgentEntry? foundUserAgentEntry = FindExplicitUserAgentEntry(entries, userAgentEntry.UserAgent);
                 if (foundUserAgentEntry == null)
                 {
                     entries.Add(userAgentEntry);
@@ -594,7 +596,12 @@ namespace Robots
                 return true;
 
             if (!uri.IsAbsoluteUri)
+            {
+                if (state.BaseUri == null)
+                    throw new InvalidOperationException("Set BaseUri before checking a relative Url.");
+
                 uri = new Uri(state.BaseUri, uri);
+            }
 
             //if (!IsInternalToDomain(uri))
             //    return true;
@@ -607,7 +614,7 @@ namespace Robots
                 return true;
 
 
-            string[] uriParts = uri.PathAndQuery.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            string[] uriParts = uri.PathAndQuery.Split(PathSeparator, StringSplitOptions.RemoveEmptyEntries);
             foreach (var disallowEntry in userAgentEntry.DisallowEntries)
             {
                 bool result;
@@ -669,34 +676,34 @@ namespace Robots
 
 #region Private methods
 
-        private static UserAgentEntry FindUserAgentEntry(List<Entry> entries, string userAgent)
+        private static UserAgentEntry? FindUserAgentEntry(List<Entry> entries, string userAgent)
         {
-            UserAgentEntry allAgentsEntry = null;
+            UserAgentEntry? allAgentsEntry = null;
             foreach (var entry in entries)
             {
                 var userAgentEntry = entry as UserAgentEntry;
                 if (userAgentEntry == null || userAgentEntry.Type != EntryType.UserAgent)
                     continue;
 
-                if (string.Compare(userAgentEntry.UserAgent, userAgent, StringComparison.OrdinalIgnoreCase) == 0)
+                if (string.Equals(userAgentEntry.UserAgent, userAgent, StringComparison.OrdinalIgnoreCase))
                     return userAgentEntry;
-                if (string.Compare(userAgentEntry.UserAgent, UserAgents.AllAgents, StringComparison.OrdinalIgnoreCase) == 0)
+                if (string.Equals(userAgentEntry.UserAgent, UserAgents.AllAgents, StringComparison.OrdinalIgnoreCase))
                     allAgentsEntry = userAgentEntry;
             }
 
             return allAgentsEntry;
         }
 
-        private static UserAgentEntry FindExplicitUserAgentEntry(List<Entry> entries, string userAgent)
+        private static UserAgentEntry? FindExplicitUserAgentEntry(List<Entry> entries, string userAgent)
         {
-            UserAgentEntry targetEntry = null;
+            UserAgentEntry? targetEntry = null;
             foreach (var entry in entries)
             {
                 var userAgentEntry = entry as UserAgentEntry;
                 if (userAgentEntry == null || userAgentEntry.Type != EntryType.UserAgent)
                     continue;
 
-                if (string.Compare(userAgentEntry.UserAgent, userAgent, StringComparison.OrdinalIgnoreCase) == 0)
+                if (string.Equals(userAgentEntry.UserAgent, userAgent, StringComparison.OrdinalIgnoreCase))
                 {
                     targetEntry = userAgentEntry;
                     break;
@@ -706,12 +713,12 @@ namespace Robots
             return targetEntry;
         }
 
-        private bool CheckExplicitlyAllowed(UserAgentEntry userAgentEntry, Uri uri)
+        private static bool CheckExplicitlyAllowed(UserAgentEntry userAgentEntry, Uri uri)
         {
             //if (!IsInternalToDomain(uri))
             //    return true;
 
-            string[] uriParts = uri.PathAndQuery.Split(new[] {'/'}, StringSplitOptions.RemoveEmptyEntries);
+            string[] uriParts = uri.PathAndQuery.Split(PathSeparator, StringSplitOptions.RemoveEmptyEntries);
             foreach (var allowEntry in userAgentEntry.AllowEntries)
             {
                 bool result;
@@ -727,7 +734,10 @@ namespace Robots
         private static bool CheckAllowedEntry(AllowEntry entry, string[] uriParts, out bool allow)
         {
             allow = true;
-            string[] robotInstructionUriParts = entry.Url.PathAndQuery.Split(new[] {'/'}, StringSplitOptions.RemoveEmptyEntries);
+            if (entry.Url == null)
+                return false;
+
+            string[] robotInstructionUriParts = entry.Url.PathAndQuery.Split(PathSeparator, StringSplitOptions.RemoveEmptyEntries);
 
             if (robotInstructionUriParts.Length > uriParts.Length)
                 return false;
@@ -735,7 +745,7 @@ namespace Robots
             bool mismatch = false;
             for (int i = 0; i < Math.Min(robotInstructionUriParts.Length, uriParts.Length); i++)
             {
-                if (string.Compare(uriParts[i], robotInstructionUriParts[i], StringComparison.OrdinalIgnoreCase) != 0)
+                if (!string.Equals(uriParts[i], robotInstructionUriParts[i], StringComparison.OrdinalIgnoreCase))
                 {
                     mismatch = true;
                     break;
@@ -752,12 +762,16 @@ namespace Robots
         private static bool CheckDisallowedEntry(DisallowEntry entry, string[] uriParts, out bool allow)
         {
             allow = true;
-            string[] robotInstructionUriParts = entry.Url.PathAndQuery.Split(new[] {'/'}, StringSplitOptions.RemoveEmptyEntries);
+            if (entry.Url == null)
+                return false;
+
+            string[] robotInstructionUriParts = entry.Url.PathAndQuery.Split(PathSeparator, StringSplitOptions.RemoveEmptyEntries);
 
             if (robotInstructionUriParts.Length > uriParts.Length)
                 return false;
 
-            bool lastPartIsComplete = entry.Url.PathAndQuery.EndsWith("/");
+            string path = entry.Url.PathAndQuery;
+            bool lastPartIsComplete = path.Length > 0 && path[path.Length - 1] == '/';
 
             int end = Math.Min(robotInstructionUriParts.Length, uriParts.Length);
             bool mismatch = false;
@@ -789,9 +803,9 @@ namespace Robots
 
         private static bool IsMismatch(string regsiteredPart, string testedPart, bool partIsComplete)
         {
-            if (string.Compare("*", regsiteredPart, StringComparison.OrdinalIgnoreCase) == 0)
+            if (string.Equals("*", regsiteredPart, StringComparison.OrdinalIgnoreCase))
                 return false;
-            if (string.Compare(testedPart, regsiteredPart, StringComparison.OrdinalIgnoreCase) == 0)
+            if (string.Equals(testedPart, regsiteredPart, StringComparison.OrdinalIgnoreCase))
                 return false;
             if (!partIsComplete && testedPart.StartsWith(regsiteredPart, StringComparison.OrdinalIgnoreCase))
                 return false;
@@ -804,9 +818,9 @@ namespace Robots
         internal void AddEntry(Entry entry)
         {
             if (entry ==  null)
-                throw new ArgumentNullException("entry");
+                throw new ArgumentNullException(nameof(entry));
             if (entry.Type != EntryType.Comment && entry.Type != EntryType.UserAgent)
-                throw new ArgumentException("Only Comments and User-Agent entries can be added", "entry");
+                throw new ArgumentException("Only Comments and User-Agent entries can be added", nameof(entry));
 
             // Copy instead of adding to the published list, which readers may be enumerating.
             State current, updated;
@@ -826,13 +840,13 @@ namespace Robots
         {
             public static readonly State Empty = new State(null, new List<Entry>());
 
-            public State(Uri baseUri, List<Entry> entries)
+            public State(Uri? baseUri, List<Entry> entries)
             {
                 BaseUri = baseUri;
                 Entries = entries;
             }
 
-            public Uri BaseUri { get; }
+            public Uri? BaseUri { get; }
 
             public List<Entry> Entries { get; }
         }

@@ -70,6 +70,46 @@ namespace Robots
             return read;
         }
 
+#if NETCOREAPP
+        public override int Read(Span<byte> buffer)
+        {
+            if (_remaining == 0)
+            {
+                if (!_probed)
+                {
+                    _probed = true;
+                    LimitReached = _inner.Read(_probe, 0, 1) > 0;
+                }
+                return 0;
+            }
+
+            int read = _inner.Read(buffer.Slice(0, (int)Math.Min(buffer.Length, _remaining)));
+            _remaining -= read;
+            return read;
+        }
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        {
+            return ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+        }
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            if (_remaining == 0)
+            {
+                if (!_probed)
+                {
+                    _probed = true;
+                    LimitReached = await _inner.ReadAsync(_probe.AsMemory(), cancellationToken).ConfigureAwait(false) > 0;
+                }
+                return 0;
+            }
+
+            int read = await _inner.ReadAsync(buffer.Slice(0, (int)Math.Min(buffer.Length, _remaining)), cancellationToken).ConfigureAwait(false);
+            _remaining -= read;
+            return read;
+        }
+#else
         public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
         {
             if (_remaining == 0)
@@ -86,6 +126,7 @@ namespace Robots
             _remaining -= read;
             return read;
         }
+#endif
 
         public override void Flush()
         {
