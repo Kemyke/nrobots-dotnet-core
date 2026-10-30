@@ -41,7 +41,10 @@ Sitemap: http://www.test.com/sitemap.xml";
         public void Load_stream_with_base_url()
         {
             var robots = new Robots.Robots();
-            robots.Load(ContentStream(), BaseUrl);
+            using (var stream = ContentStream())
+            {
+                robots.Load(stream, BaseUrl);
+            }
             AssertLoaded(robots);
         }
 
@@ -49,7 +52,10 @@ Sitemap: http://www.test.com/sitemap.xml";
         public async Task LoadAsync_stream_with_base_url()
         {
             var robots = new Robots.Robots();
-            await robots.LoadAsync(ContentStream(), BaseUrl, TestContext.CancellationToken);
+            using (var stream = ContentStream())
+            {
+                await robots.LoadAsync(stream, BaseUrl, TestContext.CancellationToken);
+            }
             AssertLoaded(robots);
         }
 
@@ -57,7 +63,10 @@ Sitemap: http://www.test.com/sitemap.xml";
         public void Load_stream_with_base_uri()
         {
             var robots = new Robots.Robots();
-            robots.Load(ContentStream(), new Uri(BaseUrl));
+            using (var stream = ContentStream())
+            {
+                robots.Load(stream, new Uri(BaseUrl));
+            }
             AssertLoaded(robots);
         }
 
@@ -65,7 +74,10 @@ Sitemap: http://www.test.com/sitemap.xml";
         public async Task LoadAsync_stream_with_base_uri()
         {
             var robots = new Robots.Robots();
-            await robots.LoadAsync(ContentStream(), new Uri(BaseUrl), TestContext.CancellationToken);
+            using (var stream = ContentStream())
+            {
+                await robots.LoadAsync(stream, new Uri(BaseUrl), TestContext.CancellationToken);
+            }
             AssertLoaded(robots);
         }
 
@@ -73,7 +85,10 @@ Sitemap: http://www.test.com/sitemap.xml";
         public void Load_reader()
         {
             var robots = new Robots.Robots();
-            robots.Load(new StringReader(Content), new Uri(BaseUrl));
+            using (var reader = new StringReader(Content))
+            {
+                robots.Load(reader, new Uri(BaseUrl));
+            }
             AssertLoaded(robots);
         }
 
@@ -81,35 +96,52 @@ Sitemap: http://www.test.com/sitemap.xml";
         public async Task LoadAsync_reader()
         {
             var robots = new Robots.Robots();
-            await robots.LoadAsync(new StringReader(Content), new Uri(BaseUrl), TestContext.CancellationToken);
+            using (var reader = new StringReader(Content))
+            {
+                await robots.LoadAsync(reader, new Uri(BaseUrl), TestContext.CancellationToken);
+            }
             AssertLoaded(robots);
         }
 
         [TestMethod]
         public void Load_reader_reads_synchronously()
         {
-            var reader = new CountingTextReader(Content);
-            new Robots.Robots().Load(reader, new Uri(BaseUrl));
+            using (var reader = new CountingTextReader(Content))
+            {
+                new Robots.Robots().Load(reader, new Uri(BaseUrl));
 
-            Assert.AreEqual(5, reader.SyncReads);
-            Assert.AreEqual(0, reader.AsyncReads);
+                Assert.AreEqual(5, reader.SyncReads);
+                Assert.AreEqual(0, reader.AsyncReads);
+            }
         }
 
         [TestMethod]
         public async Task LoadAsync_reader_reads_asynchronously()
         {
-            var reader = new CountingTextReader(Content);
-            await new Robots.Robots().LoadAsync(reader, new Uri(BaseUrl), TestContext.CancellationToken);
+            using (var reader = new CountingTextReader(Content))
+            {
+                await new Robots.Robots().LoadAsync(reader, new Uri(BaseUrl), TestContext.CancellationToken);
 
-            Assert.AreEqual(0, reader.SyncReads);
-            Assert.AreEqual(5, reader.AsyncReads);
+                Assert.AreEqual(0, reader.SyncReads);
+                Assert.AreEqual(5, reader.AsyncReads);
+            }
         }
 
         [TestMethod]
         public async Task LoadAsync_stream_rejects_an_invalid_base_url()
         {
             var robots = new Robots.Robots();
-            await Assert.ThrowsExactlyAsync<ArgumentException>(() => robots.LoadAsync(ContentStream(), "not a url", TestContext.CancellationToken));
+            using (var stream = ContentStream())
+            {
+                await Assert.ThrowsExactlyAsync<ArgumentException>(() => robots.LoadAsync(stream, "not a url", TestContext.CancellationToken));
+            }
+        }
+
+        [TestMethod]
+        public async Task LoadAsync_stream_rejects_a_null_stream()
+        {
+            var robots = new Robots.Robots();
+            await Assert.ThrowsExactlyAsync<ArgumentNullException>(() => robots.LoadAsync((Stream)null, new Uri(BaseUrl), TestContext.CancellationToken));
         }
 
         [TestMethod]
@@ -122,12 +154,14 @@ Sitemap: http://www.test.com/sitemap.xml";
         [TestMethod]
         public async Task LoadAsync_reader_honours_cancellation()
         {
-            var reader = new CountingTextReader(Content);
-            var cancellation = new CancellationTokenSource();
-            cancellation.Cancel();
+            using (var reader = new CountingTextReader(Content))
+            using (var cancellation = new CancellationTokenSource())
+            {
+                cancellation.Cancel();
 
-            await Assert.ThrowsAsync<OperationCanceledException>(() => new Robots.Robots().LoadAsync(reader, new Uri(BaseUrl), cancellation.Token));
-            Assert.AreEqual(0, reader.AsyncReads);
+                await Assert.ThrowsAsync<OperationCanceledException>(() => new Robots.Robots().LoadAsync(reader, new Uri(BaseUrl), cancellation.Token));
+                Assert.AreEqual(0, reader.AsyncReads);
+            }
         }
     }
 }

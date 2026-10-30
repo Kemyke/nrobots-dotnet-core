@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Robots.Model;
@@ -12,9 +13,9 @@ namespace Robots
     {
         #region Private Fields
 
-        private readonly List<Entry> _entries = new List<Entry>();
-
-        private Uri _baseUri;
+        // The loaded rules and their base Uri. A load builds a new State and publishes it with one
+        // reference swap, so readers on other threads always see one complete load, never a partial one.
+        private State _state = State.Empty;
 
         private readonly HttpClient _httpClient;
 
@@ -58,13 +59,20 @@ namespace Robots
 
         public Uri BaseUri
         {
-            get { return _baseUri; }
+            get { return Volatile.Read(ref _state).BaseUri; }
             set
             {
-                if (value == _baseUri)
-                    return;
+                // Retry if a load or another setter published a new State in the meantime.
+                State current, updated;
+                do
+                {
+                    current = Volatile.Read(ref _state);
+                    if (value == current.BaseUri)
+                        return;
 
-                _baseUri = value;
+                    updated = new State(value, current.Entries);
+                }
+                while (Interlocked.CompareExchange(ref _state, updated, current) != current);
             }
         }
         #endregion
@@ -122,7 +130,10 @@ namespace Robots
         /// <param name="baseUri"></param>
         public void Load(Stream stream, Uri baseUri)
         {
-            Load(new StreamReader(stream), baseUri);
+            if (stream == null)
+                throw new ArgumentNullException("stream");
+
+            LoadCoreAsync(stream, baseUri, false, CancellationToken.None).GetAwaiter().GetResult();
         }
 
         /// <summary>
@@ -133,7 +144,10 @@ namespace Robots
         /// <param name="cancellationToken">Cancels the read.</param>
         public Task LoadAsync(Stream stream, Uri baseUri, CancellationToken cancellationToken = default(CancellationToken))
         {
-            return LoadAsync(new StreamReader(stream), baseUri, cancellationToken);
+            if (stream == null)
+                throw new ArgumentNullException("stream");
+
+            return LoadCoreAsync(stream, baseUri, true, cancellationToken);
         }
 
         /// <summary>
@@ -222,20 +236,29 @@ namespace Robots
 #else
                 using (var responseStream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
 #endif
-                using (var reader = new StreamReader(responseStream))
                 {
                     // RequestUri is the final address after any redirects.
                     var finalUri = response.RequestMessage.RequestUri;
                     var baseUri = ParseBaseUrl(string.Concat(finalUri.Scheme, "://", finalUri.Host));
-                    await LoadCoreAsync(reader, baseUri, isAsync, cancellationToken).ConfigureAwait(false);
+                    await LoadCoreAsync(responseStream, baseUri, isAsync, cancellationToken).ConfigureAwait(false);
                 }
+            }
+        }
+
+        private async Task LoadCoreAsync(Stream stream, Uri baseUri, bool isAsync, CancellationToken cancellationToken)
+        {
+            // leaveOpen: the caller owns the stream, so disposing the reader must not close it.
+            using (var reader = new StreamReader(stream, Encoding.UTF8, true, 1024, true))
+            {
+                await LoadCoreAsync(reader, baseUri, isAsync, cancellationToken).ConfigureAwait(false);
             }
         }
 
         private async Task LoadCoreAsync(TextReader reader, Uri baseUri, bool isAsync, CancellationToken cancellationToken)
         {
-            _baseUri = baseUri;
-
+            // Parse into a local list and publish it only once the whole file has been read: readers keep
+            // seeing the previous load until then, and a failed or cancelled load leaves it unchanged.
+            List<Entry> entries = new List<Entry>();
             List<UserAgentEntry> userAgentsGroup = new List<UserAgentEntry>();
             bool addedEntriesToUserAgent = false;
             do
@@ -262,7 +285,7 @@ namespace Robots
                     continue;
 
                 Entry entry;
-                if (!Entry.TryParse(_baseUri, line, out entry))
+                if (!Entry.TryParse(baseUri, line, out entry))
                     continue;
 
                 if (entry.Type == EntryType.UserAgent)
@@ -274,10 +297,10 @@ namespace Robots
                         addedEntriesToUserAgent = false;
                     }
                     
-                    UserAgentEntry foundUserAgentEntry = FindExplicitUserAgentEntry(userAgentEntry.UserAgent);
+                    UserAgentEntry foundUserAgentEntry = FindExplicitUserAgentEntry(entries, userAgentEntry.UserAgent);
                     if (foundUserAgentEntry == null)
                     {
-                        _entries.Add(userAgentEntry);
+                        entries.Add(userAgentEntry);
                         userAgentsGroup.Add(userAgentEntry);
                     }
                     else
@@ -287,11 +310,11 @@ namespace Robots
                 }
                 else if (entry.Type == EntryType.Comment)
                 {
-                    _entries.Add(entry);
+                    entries.Add(entry);
                 }
                 else if (entry.Type == EntryType.Sitemap)
                 {
-                    _entries.Add(entry);
+                    entries.Add(entry);
                 }
                 else if (userAgentsGroup.Count > 0)
                 {
@@ -307,6 +330,8 @@ namespace Robots
                 }
             } while (true);
 
+            // Replaces the previous load instead of adding to it.
+            Volatile.Write(ref _state, new State(baseUri, entries));
         }
 
 #endregion
@@ -330,11 +355,13 @@ namespace Robots
 
         public bool Allowed(Uri uri, string userAgent)
         {
-            if (_entries.Count == 0)
+            // One snapshot for the whole check, so a concurrent load can't mix two files.
+            var state = Volatile.Read(ref _state);
+            if (state.Entries.Count == 0)
                 return true;
 
             if (!uri.IsAbsoluteUri)
-                uri = new Uri(_baseUri, uri);
+                uri = new Uri(state.BaseUri, uri);
 
             //if (!IsInternalToDomain(uri))
             //    return true;
@@ -342,7 +369,7 @@ namespace Robots
             if (uri.LocalPath == "/robots.txt")
                 return false;
 
-            var userAgentEntry = FindUserAgentEntry(userAgent);
+            var userAgentEntry = FindUserAgentEntry(state.Entries, userAgent);
             if (userAgentEntry == null)
                 return true;
 
@@ -376,7 +403,7 @@ namespace Robots
         {
             int crawlDelay = 0;
 
-            var userAgentEntry = FindUserAgentEntry(userAgent);
+            var userAgentEntry = FindUserAgentEntry(Volatile.Read(ref _state).Entries, userAgent);
             if (userAgentEntry == null)
                 return crawlDelay;
 
@@ -396,7 +423,7 @@ namespace Robots
         {
             List<string> sitemapUrls = new List<string>();
 
-            foreach(Entry sitemapEntry in _entries)
+            foreach(Entry sitemapEntry in Volatile.Read(ref _state).Entries)
             {
                 if ( (sitemapEntry is SitemapEntry) && (sitemapEntry != null) )
                     sitemapUrls.Add(((SitemapEntry)sitemapEntry).SitemapUrl);
@@ -409,10 +436,10 @@ namespace Robots
 
 #region Private methods
 
-        private UserAgentEntry FindUserAgentEntry(string userAgent)
+        private static UserAgentEntry FindUserAgentEntry(List<Entry> entries, string userAgent)
         {
             UserAgentEntry allAgentsEntry = null;
-            foreach (var entry in _entries)
+            foreach (var entry in entries)
             {
                 var userAgentEntry = entry as UserAgentEntry;
                 if (userAgentEntry == null || userAgentEntry.Type != EntryType.UserAgent)
@@ -427,10 +454,10 @@ namespace Robots
             return allAgentsEntry;
         }
 
-        private UserAgentEntry FindExplicitUserAgentEntry(string userAgent)
+        private static UserAgentEntry FindExplicitUserAgentEntry(List<Entry> entries, string userAgent)
         {
             UserAgentEntry targetEntry = null;
-            foreach (var entry in _entries)
+            foreach (var entry in entries)
             {
                 var userAgentEntry = entry as UserAgentEntry;
                 if (userAgentEntry == null || userAgentEntry.Type != EntryType.UserAgent)
@@ -548,7 +575,33 @@ namespace Robots
             if (entry.Type != EntryType.Comment && entry.Type != EntryType.UserAgent)
                 throw new ArgumentException("Only Comments and User-Agent entries can be added", "entry");
 
-            _entries.Add(entry);
+            // Copy instead of adding to the published list, which readers may be enumerating.
+            State current, updated;
+            do
+            {
+                current = Volatile.Read(ref _state);
+                var entries = new List<Entry>(current.Entries) { entry };
+                updated = new State(current.BaseUri, entries);
+            }
+            while (Interlocked.CompareExchange(ref _state, updated, current) != current);
+        }
+
+        /// <summary>
+        /// A loaded robots.txt. Never modified once published; changes publish a new State.
+        /// </summary>
+        private sealed class State
+        {
+            public static readonly State Empty = new State(null, new List<Entry>());
+
+            public State(Uri baseUri, List<Entry> entries)
+            {
+                BaseUri = baseUri;
+                Entries = entries;
+            }
+
+            public Uri BaseUri { get; }
+
+            public List<Entry> Entries { get; }
         }
 
         //This was removed since the _baseUri could change if a.com redirects to b.com. Then what if b.com has links to a.com? With this activated it will always allow because it would consider it external.

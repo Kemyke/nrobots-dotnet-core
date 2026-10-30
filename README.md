@@ -54,6 +54,11 @@ await robots.LoadAsync(stream, "https://www.example.com", cancellationToken);
 
 Each `LoadAsync` overload has a synchronous `Load` counterpart. Prefer `LoadAsync` for Urls: on .NET Framework and .NET Standard, `Load(Uri)` blocks a thread until the download completes.
 
+## Thread safety:
+A `Robots` instance can be queried from several threads at once, also while it is being reloaded. Each load replaces the previous rules in one step, so a query sees either the old rules or the new ones, never a mix. A load that fails or is cancelled keeps the previous rules.
+
+Build with `RobotsBuilder` on one thread; share the result once it is built.
+
 ## What's new in 2.0.0:
 * Targets `net10.0`, `netstandard2.0` and `net462`, replacing `net40`, `net451` and `netstandard1.1`.
 * `LoadAsync` overloads for `Uri`, `Stream` and `TextReader`, each taking a `CancellationToken`.
@@ -62,6 +67,7 @@ Each `LoadAsync` overload has a synchronous `Load` counterpart. Prefer `LoadAsyn
 Breaking changes:
 * `IRobots` has new `LoadAsync` members, so your own `IRobots` implementations must add them. Code that only calls `Robots` or `IRobots` needs no changes.
 * A failed download throws `HttpRequestException` instead of `WebException`.
+* Loading into an instance that already holds rules replaces them; 1.x added the new rules to the old ones.
 
 ## Building:
 Requires the .NET 10 SDK (10.0.403 or later).

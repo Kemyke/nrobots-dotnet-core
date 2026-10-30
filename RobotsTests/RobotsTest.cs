@@ -47,9 +47,12 @@ Allow: /allowedfolder",
 Disallow: /cashback/admin
 Allow: /entertainment
 Disallow: /account/");
-            var robots = new Robots.Robots(new HttpClient(handler));
-            await robots.LoadAsync(new Uri(BASE_URL), TestContext.CancellationToken);
-            return robots;
+            using (var client = new HttpClient(handler))
+            {
+                var robots = new Robots.Robots(client);
+                await robots.LoadAsync(new Uri(BASE_URL), TestContext.CancellationToken);
+                return robots;
+            }
         }
 
         private static Robots.Robots RobotsEmpty
