@@ -3,7 +3,6 @@
   <PropertyGroup>
     <TargetFrameworks>netstandard2.0;net10.0</TargetFrameworks>
     <TargetFrameworks Condition=" '$(OS)' == 'Windows_NT' ">$(TargetFrameworks);net462</TargetFrameworks>
-    <NoWarn>$(NoWarn);SYSLIB0014</NoWarn>
     <RootNamespace>Robots</RootNamespace>
     <AssemblyName>Robots</AssemblyName>
     <!-- AssemblyInfo.cs is kept as the source of the assembly attributes. -->
@@ -19,5 +18,9 @@
     <PackageProjectUrl>https://github.com/Kemyke/nrobots-dotnet-core</PackageProjectUrl>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
   </PropertyGroup>
+
+  <ItemGroup Condition=" '$(TargetFramework)' == 'net462' ">
+    <Reference Include="System.Net.Http" />
+  </ItemGroup>
 
 </Project>

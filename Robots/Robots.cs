@@ -1,6 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
 using Robots.Model;
 
 namespace Robots
@@ -12,6 +15,42 @@ namespace Robots
         private readonly List<Entry> _entries = new List<Entry>();
 
         private Uri _baseUri;
+
+        private readonly HttpClient _httpClient;
+
+        // Shared so repeated loads reuse connections instead of exhausting sockets.
+        private static readonly HttpClient DefaultHttpClient = CreateDefaultHttpClient();
+
+        #endregion
+
+        #region Constructors
+
+        public Robots()
+            : this(DefaultHttpClient)
+        {
+        }
+
+        /// <summary>
+        /// Creates a Robots that loads web resources through the given HttpClient.
+        /// </summary>
+        /// <param name="httpClient">The client used by Load(Uri) and LoadAsync. May not be null.</param>
+        public Robots(HttpClient httpClient)
+        {
+            if (httpClient == null)
+                throw new ArgumentNullException("httpClient");
+
+            _httpClient = httpClient;
+        }
+
+        private static HttpClient CreateDefaultHttpClient()
+        {
+#if NET5_0_OR_GREATER
+            // Recycle pooled connections so a long-lived client picks up DNS changes.
+            return new HttpClient(new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) });
+#else
+            return new HttpClient();
+#endif
+        }
 
         #endregion
 
@@ -36,16 +75,53 @@ namespace Robots
         /// Load the robots.txt from a web resource
         /// </summary>
         /// <param name="robotsUri">The Uri of the web resource</param>
+        /// <exception cref="HttpRequestException">The request failed or returned a non-success status code.</exception>
         public void Load(Uri robotsUri)
         {
-            var uriBuilder = new UriBuilder(robotsUri) { Path = "/robots.txt" };
-            var req = (System.Net.HttpWebRequest)System.Net.WebRequest.Create(uriBuilder.Uri);
+            // Completes synchronously on .NET 5+ (HttpClient.Send). Older targets have no
+            // synchronous HttpClient API, so this blocks until the request completes.
+            LoadCoreAsync(robotsUri, false, CancellationToken.None).GetAwaiter().GetResult();
+        }
 
-            using (var webresponse = req.GetResponse())
-            using (var responseStream = webresponse.GetResponseStream())
+        /// <summary>
+        /// Load the robots.txt from a web resource
+        /// </summary>
+        /// <param name="robotsUri">The Uri of the web resource</param>
+        /// <param name="cancellationToken">Cancels the request.</param>
+        /// <exception cref="HttpRequestException">The request failed or returned a non-success status code.</exception>
+        public Task LoadAsync(Uri robotsUri, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            return LoadCoreAsync(robotsUri, true, cancellationToken);
+        }
+
+        private async Task LoadCoreAsync(Uri robotsUri, bool isAsync, CancellationToken cancellationToken)
+        {
+            var uriBuilder = new UriBuilder(robotsUri) { Path = "/robots.txt" };
+
+            using (var request = new HttpRequestMessage(HttpMethod.Get, uriBuilder.Uri))
+#if NET5_0_OR_GREATER
+            using (var response = isAsync
+                ? await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false)
+                : _httpClient.Send(request, cancellationToken))
+#else
+            using (var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false))
+#endif
             {
-                string baseUrl = string.Concat(webresponse.ResponseUri.Scheme, "://", webresponse.ResponseUri.Host);
-                Load(responseStream, baseUrl);
+                response.EnsureSuccessStatusCode();
+
+#if NET5_0_OR_GREATER
+                using (var responseStream = isAsync
+                    ? await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false)
+                    : response.Content.ReadAsStream(cancellationToken))
+#else
+                using (var responseStream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
+#endif
+                {
+                    // RequestUri is the final address after any redirects.
+                    var finalUri = response.RequestMessage.RequestUri;
+                    string baseUrl = string.Concat(finalUri.Scheme, "://", finalUri.Host);
+                    Load(responseStream, baseUrl);
+                }
             }
         }
 

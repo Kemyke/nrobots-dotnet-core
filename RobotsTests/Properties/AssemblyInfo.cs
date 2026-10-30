@@ -33,3 +33,7 @@ using System.Runtime.InteropServices;
 // by using the '*' as shown below:
 [assembly: AssemblyVersion("1.0.0.0")]
 [assembly: AssemblyFileVersion("1.0.0.0")]
+
+// Every test builds its own state, so tests run in parallel, one worker per core.
+[assembly: Microsoft.VisualStudio.TestTools.UnitTesting.Parallelize(
+    Scope = Microsoft.VisualStudio.TestTools.UnitTesting.ExecutionScope.MethodLevel, Workers = 0)]

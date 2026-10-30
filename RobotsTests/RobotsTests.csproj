@@ -6,7 +6,13 @@
     <RootNamespace>RobotsTests</RootNamespace>
     <!-- AssemblyInfo.cs is kept as the source of the assembly attributes. -->
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <!-- Run every MSTest analyzer, so the tests keep following current MSTest practice. -->
+    <MSTestAnalysisMode>All</MSTestAnalysisMode>
   </PropertyGroup>
+
+  <ItemGroup Condition=" '$(TargetFramework)' == 'net462' ">
+    <Reference Include="System.Net.Http" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Robots\Robots.csproj" />

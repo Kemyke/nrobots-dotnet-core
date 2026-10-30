@@ -1,7 +1,8 @@
 ﻿using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System.Collections.Generic;
-
+using System.Net.Http;
+using System.Threading.Tasks;
 
 namespace RobotsTests
 {
@@ -13,15 +14,6 @@ namespace RobotsTests
     public class RobotsTest
     {
         private const string BASE_URL = "http://www.test.com";
-        private static Robots.Robots _robotsContent;
-        private static Robots.Robots _robotsUrl;
-        private static Robots.Robots _robotsEmpty;
-        private static Robots.Robots _robotsWildcards;
-        private static Robots.Robots _robotsCrawlDelay;
-        private static Robots.Robots _robotsSitemap;
-        private static Robots.Robots _robotsSitemapMultiple;
-        private static Robots.Robots _robotsGroupedUserAgents;
-        private static Robots.Robots _robotsContentWithQuerystringOnRoot;
 
         /// <summary>
         ///Gets or sets the test context which provides
@@ -33,10 +25,8 @@ namespace RobotsTests
         {
             get
             {
-                if (_robotsContent == null)
-                {
-                    _robotsContent = new Robots.Robots();
-                    _robotsContent.LoadContent(
+                var robots = new Robots.Robots();
+                robots.LoadContent(
         @"User-Agent: *
 Disallow: /disallowedfile.txt
 Disallow: /disallowedfolder
@@ -46,34 +36,29 @@ Allow: /allowedfile2.txt
 Allow: /allowedfolder",
                         BASE_URL
                         );
-                }
-                return _robotsContent;
+                return robots;
             }
         }
 
-        private static Robots.Robots RobotsUrl
+        private async Task<Robots.Robots> LoadRobotsUrlAsync()
         {
-            get
-            {
-                if (_robotsUrl == null)
-                {
-                    _robotsUrl = new Robots.Robots();
-                    _robotsUrl.Load(new Uri(@"http://www.bing.com/robots.txt"));
-                }
-                return _robotsUrl;
-            }
+            var handler = FakeHttpMessageHandler.Serving(
+        @"User-agent: *
+Disallow: /cashback/admin
+Allow: /entertainment
+Disallow: /account/");
+            var robots = new Robots.Robots(new HttpClient(handler));
+            await robots.LoadAsync(new Uri(BASE_URL), TestContext.CancellationToken);
+            return robots;
         }
 
         private static Robots.Robots RobotsEmpty
         {
             get
             {
-                if (_robotsEmpty == null)
-                {
-                    _robotsEmpty = new Robots.Robots();
-                    _robotsEmpty.LoadContent("User-Agent: *\r\nDisallow: ", BASE_URL);
-                }
-                return _robotsEmpty;
+                var robots = new Robots.Robots();
+                robots.LoadContent("User-Agent: *\r\nDisallow: ", BASE_URL);
+                return robots;
             }
         }
 
@@ -81,16 +66,13 @@ Allow: /allowedfolder",
         {
             get
             {
-                if (_robotsWildcards == null)
-                {
-                    _robotsWildcards = new Robots.Robots();
-                    _robotsWildcards.LoadContent(@"User-Agent: *
+                var robots = new Robots.Robots();
+                robots.LoadContent(@"User-Agent: *
 Disallow: */private/
 Disallow: /a/*/b/
 Disallow: /a/*$"
                                                  , BASE_URL);
-                }
-                return _robotsWildcards;
+                return robots;
             }
         }
 
@@ -98,10 +80,8 @@ Disallow: /a/*$"
         {
             get
             {
-                if (_robotsCrawlDelay == null)
-                {
-                    _robotsCrawlDelay = new Robots.Robots();
-                    _robotsCrawlDelay.LoadContent(
+                var robots = new Robots.Robots();
+                robots.LoadContent(
         @"User-Agent: *
 Crawl-Delay: 20
 
@@ -115,8 +95,7 @@ User-Agent: userAgentCrawlDelayEmpty
 Crawl-Delay: ",
                         BASE_URL
                         );
-                }
-                return _robotsCrawlDelay;
+                return robots;
             }
         }
 
@@ -124,16 +103,13 @@ Crawl-Delay: ",
         {
             get
             {
-                if (_robotsSitemap == null)
-                {
-                    _robotsSitemap = new Robots.Robots();
-                    _robotsSitemap.LoadContent(
+                var robots = new Robots.Robots();
+                robots.LoadContent(
 @"Sitemap: http://a.com/sitemap.xml
 ",
                         BASE_URL
                         );
-                }
-                return _robotsSitemap;
+                return robots;
             }
         }
 
@@ -141,18 +117,15 @@ Crawl-Delay: ",
         {
             get
             {
-                if (_robotsSitemapMultiple == null)
-                {
-                    _robotsSitemapMultiple = new Robots.Robots();
-                    _robotsSitemapMultiple.LoadContent(
+                var robots = new Robots.Robots();
+                robots.LoadContent(
 @"Sitemap: http://a.com/sitemap.xml
 Sitemap: http://b.com/sitemap.xml
 Sitemap: http://c.com/sitemap.xml
 ",
                         BASE_URL
                         );
-                }
-                return _robotsSitemapMultiple;
+                return robots;
             }
         }
 
@@ -160,10 +133,8 @@ Sitemap: http://c.com/sitemap.xml
         {
             get
             {
-                if (_robotsGroupedUserAgents == null)
-                {
-                    _robotsGroupedUserAgents = new Robots.Robots();
-                    _robotsGroupedUserAgents.LoadContent(
+                var robots = new Robots.Robots();
+                robots.LoadContent(
         @"User-Agent: msnbot
 User-Agent: googlebot
 Disallow: /aaa
@@ -174,8 +145,7 @@ Disallow: /bbb
 ",
                         BASE_URL
                         );
-                }
-                return _robotsGroupedUserAgents;
+                return robots;
             }
         }
 
@@ -183,51 +153,17 @@ Disallow: /bbb
         {
             get
             {
-                if (_robotsContentWithQuerystringOnRoot == null)
-                {
-                    _robotsContentWithQuerystringOnRoot = new Robots.Robots();
-                    _robotsContentWithQuerystringOnRoot.LoadContent(
+                var robots = new Robots.Robots();
+                robots.LoadContent(
         @"User-Agent: *
 Disallow: /?category=whatever
 Disallow: /?category=another&color=red
 ",
                         BASE_URL
                         );
-                }
-                return _robotsContentWithQuerystringOnRoot;
+                return robots;
             }
         }
-
-
-        #region Additional test attributes
-        // 
-        //You can use the following additional attributes as you write your tests:
-        //
-        //Use ClassInitialize to run code before running the first test in the class
-        [ClassInitialize]
-        public static void MyClassInitialize(TestContext testContext)
-        {
-        }
-        //
-        //Use ClassCleanup to run code after all tests in a class have run
-        //[ClassCleanup()]
-        //public static void MyClassCleanup()
-        //{
-        //}
-        //
-        //Use TestInitialize to run code before running each test
-        //[TestInitialize()]
-        //public void MyTestInitialize()
-        //{
-        //}
-        //
-        //Use TestCleanup to run code after each test has run
-        //[TestCleanup()]
-        //public void MyTestCleanup()
-        //{
-        //}
-        //
-        #endregion
 
         [TestMethod]
         public void Create_robots_with_content_Test()
@@ -242,44 +178,44 @@ Disallow: /?category=another&color=red
         }
 
         [TestMethod]
-        public void Create_robots_with_uri_Test()
+        public async Task Create_robots_with_uri_Test()
         {
-            var robots = RobotsUrl;
+            var robots = await LoadRobotsUrlAsync();
         }
 
         [TestMethod]
         public void Disallow_root_all_robots_out_content_Test()
         {
             bool actual = RobotsEmpty.Allowed(BASE_URL + "/");
-            Assert.AreEqual(true, actual);
+            Assert.IsTrue(actual);
         }
 
         [TestMethod]
         public void Disallow_folder_all_robots_out_content_Test()
         {
             bool actual = RobotsEmpty.Allowed(BASE_URL + "/folder");
-            Assert.AreEqual(true, actual);
+            Assert.IsTrue(actual);
         }
 
         [TestMethod]
         public void Disallow_file_all_robots_out_content_Test()
         {
             bool actual = RobotsEmpty.Allowed(BASE_URL + "/folder/file.txt");
-            Assert.AreEqual(true, actual);
+            Assert.IsTrue(actual);
         }
 
         [TestMethod]
         public void Disallow_private_folder_wildcard_content_Test()
         {
             bool actual = RobotsWildcards.Allowed("/folder/private");
-            Assert.AreEqual(false, actual);
+            Assert.IsFalse(actual);
         }
 
         [TestMethod]
         public void Disallow_subfolder_wildcard_content_Test()
         {
             bool actual = RobotsWildcards.Allowed("/a/private/b/");
-            Assert.AreEqual(false, actual);
+            Assert.IsFalse(actual);
         }
 
         [TestMethod]
@@ -314,12 +250,11 @@ Disallow: /?category=another&color=red
             Assert.IsTrue(RobotsContentWithQuerystringOnRoot.Allowed(BASE_URL + "?category=another&blah=blah", "googlebot"));
         }
 
-
         [TestMethod]
         public void Allow_subfolder_wildcard_content_Test()
         {
             bool actual = RobotsWildcards.Allowed("/a/public/c/");
-            Assert.AreEqual(true, actual);
+            Assert.IsTrue(actual);
         }
 
         [TestMethod]
@@ -346,84 +281,87 @@ Allow: /?public/public"
         public void Explicit_disallowed_file_Test()
         {
             bool actual = RobotsContent.Allowed(BASE_URL + "/disallowedfile.txt");
-            Assert.AreEqual(false, actual);
+            Assert.IsFalse(actual);
         }
 
         [TestMethod]
         public void Implicit_allowed_file_Test()
         {
             bool actual = RobotsContent.Allowed(BASE_URL + "/allowedfile.xml");
-            Assert.AreEqual(true, actual);
+            Assert.IsTrue(actual);
         }
 
         [TestMethod]
         public void Explicit_disallowed_folder_Test()
         {
             bool actual = RobotsContent.Allowed(BASE_URL + "/disallowedfolder");
-            Assert.AreEqual(false, actual);
+            Assert.IsFalse(actual);
         }
         
         [TestMethod]
         public void Explicit_disallowed_complete_folder_Test()
         {
             bool actual = RobotsContent.Allowed(BASE_URL + "/disallowedcompletefolder");
-            Assert.AreEqual(false, actual);
+            Assert.IsFalse(actual);
         }
         
         [TestMethod]
         public void Explicit_disallowed_complete_folder_Test_different_folder()
         {
             bool actual = RobotsContent.Allowed(BASE_URL + "/disallowedcompletefolderwithmoretext");
-            Assert.AreEqual(true, actual);
+            Assert.IsTrue(actual);
         }
 
         [TestMethod]
         public void Implicit_allowed_folder_Test()
         {
             bool actual = RobotsContent.Allowed(BASE_URL + "/allowedfolder");
-            Assert.AreEqual(true, actual);
+            Assert.IsTrue(actual);
         }
 
         [TestMethod]
         public void Explicit_allowed_file_Test()
         {
             bool actual = RobotsContent.Allowed(BASE_URL + "/allowedfile2.txt");
-            Assert.AreEqual(true, actual);
+            Assert.IsTrue(actual);
         }
 
         [TestMethod]
         public void Explicit_allowed_folder_Test()
         {
             bool actual = RobotsContent.Allowed(BASE_URL + "/allowedfolder2");
-            Assert.AreEqual(true, actual);
+            Assert.IsTrue(actual);
         }
 
         [TestMethod]
         public void Explicit_relative_disallowed_file_Test()
         {
             bool actual = RobotsContent.Allowed("/disallowedfile.txt");
-            Assert.AreEqual(false, actual);
-        }
-
-        [TestMethod, Ignore]//No longer valid, bing doesn't have these entries
-        public void Uri_loaded_disallow_subfolder_Test()
-        {
-            Assert.AreEqual(false, RobotsUrl.Allowed("/cashback/admin"));
-            Assert.AreEqual(false, RobotsUrl.Allowed("/cashback/admin/aaa/tool.html"));
+            Assert.IsFalse(actual);
         }
 
         [TestMethod]
-        public void Uri_loaded_allow_folder_Test()
+        public async Task Uri_loaded_disallow_subfolder_Test()
         {
-            bool actual = RobotsUrl.Allowed("/entertainment");
-            Assert.AreEqual(true, actual);
+            var robots = await LoadRobotsUrlAsync();
+            Assert.IsFalse(robots.Allowed("/cashback/admin"));
+            Assert.IsFalse(robots.Allowed("/cashback/admin/aaa/tool.html"));
         }
 
         [TestMethod]
-        public void Uri_loaded_allow_subfolder_Test()
+        public async Task Uri_loaded_allow_folder_Test()
         {
-            bool actual = RobotsUrl.Allowed("/entertainment/music");
-            Assert.AreEqual(true, actual);
+            var robots = await LoadRobotsUrlAsync();
+            bool actual = robots.Allowed("/entertainment");
+            Assert.IsTrue(actual);
+        }
+
+        [TestMethod]
+        public async Task Uri_loaded_allow_subfolder_Test()
+        {
+            var robots = await LoadRobotsUrlAsync();
+            bool actual = robots.Allowed("/entertainment/music");
+            Assert.IsTrue(actual);
         }
 
         [TestMethod]
@@ -461,7 +399,6 @@ Allow: /?public/public"
         {
             Assert.AreEqual(0, RobotsContent.GetCrawlDelay("userAgentCrawlDelayEmpty"));
         }
-
 
         [TestMethod]
         public void SitemapUrl_SingleSitemapPresent_ReturnsUrl()
@@ -518,7 +455,7 @@ Allow: /?public/public"
         [TestMethod]
         public void Sitemap_NoSitemapValueInRobotsDotText_ReturnEmptyCollection()
         {
-            Assert.AreEqual(0, RobotsEmpty.GetSitemapUrls().Count);
+            Assert.IsEmpty(RobotsEmpty.GetSitemapUrls());
         }
     }
 }

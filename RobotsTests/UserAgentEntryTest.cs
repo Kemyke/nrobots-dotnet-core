@@ -13,43 +13,6 @@ namespace RobotsTests
     [TestClass]
     public class UserAgentEntryTest
     {
-        /// <summary>
-        ///Gets or sets the test context which provides
-        ///information about and functionality for the current test run.
-        ///</summary>
-        public TestContext TestContext { get; set; }
-
-        #region Additional test attributes
-        // 
-        //You can use the following additional attributes as you write your tests:
-        //
-        //Use ClassInitialize to run code before running the first test in the class
-        //[ClassInitialize()]
-        //public static void MyClassInitialize(TestContext testContext)
-        //{
-        //}
-        //
-        //Use ClassCleanup to run code after all tests in a class have run
-        //[ClassCleanup()]
-        //public static void MyClassCleanup()
-        //{
-        //}
-        //
-        //Use TestInitialize to run code before running each test
-        //[TestInitialize()]
-        //public void MyTestInitialize()
-        //{
-        //}
-        //
-        //Use TestCleanup to run code after each test has run
-        //[TestCleanup()]
-        //public void MyTestCleanup()
-        //{
-        //}
-        //
-        #endregion
-
-
         [TestMethod]
         public void EntryType_Test()
         {
@@ -71,7 +34,7 @@ namespace RobotsTests
         public void EntriesTest()
         {
             var target = new UserAgentEntry();
-            Assert.AreEqual(0, target.Entries.Count());
+            Assert.IsEmpty(target.Entries);
         }
 
         /// <summary>
@@ -81,7 +44,7 @@ namespace RobotsTests
         public void DisallowEntriesTest()
         {
             var target = new UserAgentEntry();
-            Assert.AreEqual(0, target.DisallowEntries.Count());
+            Assert.IsEmpty(target.DisallowEntries);
         }
 
         /// <summary>
@@ -91,7 +54,7 @@ namespace RobotsTests
         public void AllowEntriesTest()
         {
             var target = new UserAgentEntry();
-            Assert.AreEqual(0, target.AllowEntries.Count());
+            Assert.IsEmpty(target.AllowEntries);
         }
 
         [TestMethod]
@@ -100,9 +63,9 @@ namespace RobotsTests
             var target = new UserAgentEntry();
             Entry entry = new CommentEntry();
             target.AddEntry(entry);
-            Assert.AreNotEqual(0, target.Entries.Count());
-            Assert.AreEqual(0, target.AllowEntries.Count());
-            Assert.AreEqual(0, target.DisallowEntries.Count());
+            Assert.IsNotEmpty(target.Entries);
+            Assert.IsEmpty(target.AllowEntries);
+            Assert.IsEmpty(target.DisallowEntries);
         }
 
         [TestMethod]
@@ -111,9 +74,9 @@ namespace RobotsTests
             var target = new UserAgentEntry();
             Entry entry = new AllowEntry();
             target.AddEntry(entry);
-            Assert.AreNotEqual(0, target.Entries.Count());
-            Assert.AreNotEqual(0, target.AllowEntries.Count());
-            Assert.AreEqual(0, target.DisallowEntries.Count());
+            Assert.IsNotEmpty(target.Entries);
+            Assert.IsNotEmpty(target.AllowEntries);
+            Assert.IsEmpty(target.DisallowEntries);
         }
 
         [TestMethod]
@@ -122,9 +85,9 @@ namespace RobotsTests
             var target = new UserAgentEntry();
             Entry entry = new CommentEntry();
             target.AddEntry(entry);
-            Assert.AreNotEqual(0, target.Entries.Count());
-            Assert.AreEqual(0, target.AllowEntries.Count());
-            Assert.AreEqual(0, target.DisallowEntries.Count());
+            Assert.IsNotEmpty(target.Entries);
+            Assert.IsEmpty(target.AllowEntries);
+            Assert.IsEmpty(target.DisallowEntries);
         }
 
     }
