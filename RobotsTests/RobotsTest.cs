@@ -207,11 +207,13 @@ Disallow: /?category=another&color=red
             Assert.IsTrue(actual);
         }
 
+        // 1.x disallowed this. RFC 9309 matches patterns character by character, so "*/private/" needs the
+        // trailing slash, which "/folder/private" doesn't have.
         [TestMethod]
-        public void Disallow_private_folder_wildcard_content_Test()
+        public void Wildcard_pattern_with_trailing_slash_does_not_match_without_it_Test()
         {
             bool actual = RobotsWildcards.Allowed("/folder/private");
-            Assert.IsFalse(actual);
+            Assert.IsTrue(actual);
         }
 
         [TestMethod]
@@ -253,11 +255,13 @@ Disallow: /?category=another&color=red
             Assert.IsTrue(RobotsContentWithQuerystringOnRoot.Allowed(BASE_URL + "?category=another&blah=blah", "googlebot"));
         }
 
+        // 1.x allowed this. Under RFC 9309, "/a/*$" is "/a/" followed by anything up to the end, so it
+        // disallows everything below /a/.
         [TestMethod]
-        public void Allow_subfolder_wildcard_content_Test()
+        public void Wildcard_then_dollar_disallows_everything_below_Test()
         {
             bool actual = RobotsWildcards.Allowed("/a/public/c/");
-            Assert.IsTrue(actual);
+            Assert.IsFalse(actual);
         }
 
         [TestMethod]
@@ -301,11 +305,13 @@ Allow: /?public/public"
             Assert.IsFalse(actual);
         }
         
+        // 1.x disallowed this. RFC 9309 matches patterns character by character, so
+        // "Disallow: /disallowedcompletefolder/" covers what is inside the folder, not the path without the slash.
         [TestMethod]
-        public void Explicit_disallowed_complete_folder_Test()
+        public void Disallowed_folder_with_trailing_slash_does_not_cover_the_path_without_it_Test()
         {
             bool actual = RobotsContent.Allowed(BASE_URL + "/disallowedcompletefolder");
-            Assert.IsFalse(actual);
+            Assert.IsTrue(actual);
         }
         
         [TestMethod]

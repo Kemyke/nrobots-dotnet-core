@@ -1,12 +1,13 @@
 # Migrating from 1.x to 2.x
 
-NRobotsCore 2.0 keeps every 1.x method signature, so most code keeps compiling unchanged. The changes are in which frameworks are supported, how downloads behave, how repeated loads combine, the `IRobots` interface, and nullable annotations. This guide lists what to check, with examples.
+NRobotsCore 2.0 keeps every 1.x method signature, so most code keeps compiling unchanged. The changes are in which frameworks are supported, how rules are matched (now RFC 9309), how downloads behave, how repeated loads combine, the `IRobots` interface, and nullable annotations. This guide lists what to check, with examples.
 
 ## Checklist
 
 | If your code... | Then |
 |---|---|
 | Targets .NET Framework 4.0–4.6.1 or .NET Standard 1.x | [Move to a supported framework](#supported-frameworks) |
+| Depends on which Urls `Allowed` allows | [Check the RFC 9309 matching changes](#matching-follows-rfc-9309) |
 | Implements `IRobots` itself (including test fakes) | [Add the `LoadAsync` and `Add` members](#irobots-has-new-members) |
 | Catches `WebException` around `Load(Uri)` | [Catch `HttpRequestException` instead](#exceptions) |
 | Treats a 404 or 5xx error from `Load(Uri)` as "no rules" or retries on it | [Check the new status handling](#http-status-codes-rfc-9309) |
@@ -200,7 +201,7 @@ A load or add that fails or is cancelled now keeps the rules from before, where 
 
 ### Adding rules to the loaded ones
 
-To keep the 1.x behaviour, load the first file and add the others with `AddContent`, `Add` or `AddAsync`. The result is the same as loading them one after another in 1.x:
+To keep the 1.x behaviour, load the first file and add the others with `AddContent`, `Add` or `AddAsync`. The rules combine the same way as loading them one after another did in 1.x; they are then matched by the [RFC 9309 rules](#matching-follows-rfc-9309):
 
 ```csharp
 // 1.x
@@ -272,6 +273,34 @@ foreach (var url in urlsToCrawl)
 
 The dictionary isn't thread-safe; a crawler that loads from several threads needs a `ConcurrentDictionary` or a lock around it. A `Robots` instance itself is safe to query from any thread.
 
+## Matching follows RFC 9309
+
+1.x matched rules with its own segment-based logic. 2.x follows [RFC 9309](https://www.rfc-editor.org/rfc/rfc9309.html), section 2.2, the same rules Google's crawler uses, so some Urls get a different answer:
+
+| robots.txt rules | Url | 1.x | 2.x |
+|---|---|---|---|
+| `Disallow: /Private` | `/private` | disallowed | **allowed**: paths are case-sensitive |
+| `Allow: /p` and `Disallow: /p/q` | `/p/q` | allowed | **disallowed**: the longest rule wins, whatever the order |
+| `Disallow: /folder/` | `/folder` | disallowed | **allowed**: the rule needs the trailing `/` |
+| `Disallow: /*.pdf$` | `/files/a.pdf` | allowed | **disallowed**: `*` matches any characters, `$` anchors the end |
+| `Disallow: /fish*` | `/fishheads` | allowed | **disallowed** |
+| `Disallow: /a/*$` | `/a/b/c/` | allowed | **disallowed**: `/a/` followed by anything |
+| `Disallow: /` | `/robots.txt` | disallowed | **allowed**: robots.txt itself is always allowed |
+| `User-agent : FooBot` (space before `:`) | any | rule ignored | **applies** |
+
+The agent you pass to `Allowed` also matches differently. Only its product token counts: the letters, `_` and `-` it starts with. So `"ExampleBot/2.1 (+https://example.com/bot)"` finds the `ExampleBot` group, where 1.x needed exactly `"ExampleBot"`. A browser-style string such as `"Mozilla/5.0 (compatible; ExampleBot/2.1)"` starts with `Mozilla`, so pass the token itself:
+
+```csharp
+robots.LoadContent("User-agent: ExampleBot\nDisallow: /private", "https://www.example.com");
+
+robots.Allowed("/private/a", "ExampleBot");                    // false
+robots.Allowed("/private/a", "ExampleBot/2.1 (+https://ex.com)"); // 1.x: true (no matching group). 2.x: false
+```
+
+Groups for the same product token are combined, so `User-agent: ExampleBot` and `User-agent: examplebot/1.0` both apply to `"ExampleBot"`.
+
+If your crawler depended on a 1.x answer, check the table above: under RFC 9309 a site that wants `/folder` blocked writes `Disallow: /folder`, which covers `/folder` and everything below it.
+
 ## Prefer LoadAsync
 
 Every `Load` method has a `LoadAsync` counterpart that takes a `CancellationToken`:
@@ -288,7 +317,7 @@ await robots.LoadAsync(new Uri("https://www.example.com"), cancellationToken);
 
 ## Your own HttpClient
 
-`new Robots()` uses one shared `HttpClient`. To use your own, for example from `IHttpClientFactory`, or to set a proxy or timeout, pass it in. `Robots` never disposes a client you pass:
+`new Robots()` uses one shared `HttpClient` with the default timeout of 100 seconds. To use your own, for example from `IHttpClientFactory`, or to set a proxy or a shorter timeout, pass it in. `Robots` never disposes a client you pass:
 
 ```csharp
 services.AddHttpClient("robots", client => client.Timeout = TimeSpan.FromSeconds(10));

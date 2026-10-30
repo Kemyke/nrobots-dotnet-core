@@ -31,7 +31,6 @@ namespace Robots
 
         private const string DisallowAllContent = "User-agent: *\nDisallow: /";
 
-        private static readonly char[] PathSeparator = { '/' };
 
         #endregion
 
@@ -588,6 +587,15 @@ namespace Robots
             return Allowed(uri, UserAgents.AllAgents);
         }
 
+        /// <summary>
+        /// Checks whether a crawler may access a Url, following RFC 9309: the groups for the crawler's product
+        /// token apply (or the "*" groups when none match), the longest matching rule wins, and Allow wins a tie.
+        /// </summary>
+        /// <param name="uri">The Url to check. A relative Url resolves against <see cref="BaseUri"/>.</param>
+        /// <param name="userAgent">
+        /// The crawler's product token, such as "ExampleBot", or a User-Agent string that starts with it, such as
+        /// "ExampleBot/2.1 (+https://example.com/bot)". Matching is case-insensitive.
+        /// </param>
         public bool Allowed(Uri uri, string userAgent)
         {
             // One snapshot for the whole check, so a concurrent load can't mix two files.
@@ -603,31 +611,39 @@ namespace Robots
                 uri = new Uri(state.BaseUri, uri);
             }
 
-            //if (!IsInternalToDomain(uri))
-            //    return true;
+            string path = RobotsPattern.NormalizePath(uri.PathAndQuery);
 
-            if (uri.LocalPath == "/robots.txt")
-                return false;
-
-            var userAgentEntry = FindUserAgentEntry(state.Entries, userAgent);
-            if (userAgentEntry == null)
+            // RFC 9309, section 2.2.2: the /robots.txt URI is implicitly allowed.
+            if (path == "/robots.txt")
                 return true;
 
-
-            string[] uriParts = uri.PathAndQuery.Split(PathSeparator, StringSplitOptions.RemoveEmptyEntries);
-            foreach (var disallowEntry in userAgentEntry.DisallowEntries)
+            // The length of the longest matching Allow and Disallow pattern, or -1 when none matches.
+            int longestAllow = -1;
+            int longestDisallow = -1;
+            foreach (var group in FindGroups(state.Entries, userAgent))
             {
-                bool result;
-                if (CheckDisallowedEntry(disallowEntry, uriParts, out result))
+                foreach (var rule in group.Entries)
                 {
-                    if (CheckExplicitlyAllowed(userAgentEntry, uri))
-                        return true;
+                    var urlEntry = rule as UrlEntry;
+                    var pattern = urlEntry?.MatchPattern;
+                    if (pattern == null)
+                        continue;
 
-                    return result;
+                    bool isAllow = rule.Type == EntryType.Allow;
+                    if (pattern.Length <= (isAllow ? longestAllow : longestDisallow))
+                        continue;
+
+                    if (!RobotsPattern.Matches(path, pattern))
+                        continue;
+
+                    if (isAllow)
+                        longestAllow = pattern.Length;
+                    else if (rule.Type == EntryType.Disallow)
+                        longestDisallow = pattern.Length;
                 }
             }
 
-            return true;
+            return longestDisallow <= longestAllow;
         }
 
 #endregion
@@ -641,18 +657,13 @@ namespace Robots
 
         public int GetCrawlDelay(string userAgent)
         {
-            int crawlDelay = 0;
-
-            var userAgentEntry = FindUserAgentEntry(Volatile.Read(ref _state).Entries, userAgent);
-            if (userAgentEntry == null)
-                return crawlDelay;
-
-            if (userAgentEntry.CrawlDelayEntry != null)
+            foreach (var group in FindGroups(Volatile.Read(ref _state).Entries, userAgent))
             {
-                crawlDelay = userAgentEntry.CrawlDelayEntry.CrawlDelay;
+                if (group.CrawlDelayEntry != null)
+                    return group.CrawlDelayEntry.CrawlDelay;
             }
 
-            return crawlDelay;
+            return 0;
         }
 
 #endregion
@@ -668,7 +679,7 @@ namespace Robots
                 if ( (sitemapEntry is SitemapEntry) && (sitemapEntry != null) )
                     sitemapUrls.Add(((SitemapEntry)sitemapEntry).SitemapUrl);
             }
-            
+
             return sitemapUrls;
         }
 
@@ -676,22 +687,27 @@ namespace Robots
 
 #region Private methods
 
-        private static UserAgentEntry? FindUserAgentEntry(List<Entry> entries, string userAgent)
+        // RFC 9309, section 2.2.1: every group whose product token matches the crawler's, case-insensitively;
+        // when none does, every "*" group. Groups for the same token are combined.
+        private static List<UserAgentEntry> FindGroups(List<Entry> entries, string userAgent)
         {
-            UserAgentEntry? allAgentsEntry = null;
+            string token = RobotsPattern.IsGlobalAgent(userAgent) ? string.Empty : RobotsPattern.ProductToken(userAgent);
+
+            var specific = new List<UserAgentEntry>();
+            var global = new List<UserAgentEntry>();
             foreach (var entry in entries)
             {
-                var userAgentEntry = entry as UserAgentEntry;
-                if (userAgentEntry == null || userAgentEntry.Type != EntryType.UserAgent)
+                var group = entry as UserAgentEntry;
+                if (group == null || group.Type != EntryType.UserAgent)
                     continue;
 
-                if (string.Equals(userAgentEntry.UserAgent, userAgent, StringComparison.OrdinalIgnoreCase))
-                    return userAgentEntry;
-                if (string.Equals(userAgentEntry.UserAgent, UserAgents.AllAgents, StringComparison.OrdinalIgnoreCase))
-                    allAgentsEntry = userAgentEntry;
+                if (RobotsPattern.IsGlobalAgent(group.UserAgent))
+                    global.Add(group);
+                else if (token.Length > 0 && string.Equals(RobotsPattern.ProductToken(group.UserAgent), token, StringComparison.OrdinalIgnoreCase))
+                    specific.Add(group);
             }
 
-            return allAgentsEntry;
+            return specific.Count > 0 ? specific : global;
         }
 
         private static UserAgentEntry? FindExplicitUserAgentEntry(List<Entry> entries, string userAgent)
@@ -711,106 +727,6 @@ namespace Robots
             }
 
             return targetEntry;
-        }
-
-        private static bool CheckExplicitlyAllowed(UserAgentEntry userAgentEntry, Uri uri)
-        {
-            //if (!IsInternalToDomain(uri))
-            //    return true;
-
-            string[] uriParts = uri.PathAndQuery.Split(PathSeparator, StringSplitOptions.RemoveEmptyEntries);
-            foreach (var allowEntry in userAgentEntry.AllowEntries)
-            {
-                bool result;
-                if (CheckAllowedEntry(allowEntry, uriParts, out result))
-                {
-                    return result;
-                }
-            }
-
-            return false;
-        }
-
-        private static bool CheckAllowedEntry(AllowEntry entry, string[] uriParts, out bool allow)
-        {
-            allow = true;
-            if (entry.Url == null)
-                return false;
-
-            string[] robotInstructionUriParts = entry.Url.PathAndQuery.Split(PathSeparator, StringSplitOptions.RemoveEmptyEntries);
-
-            if (robotInstructionUriParts.Length > uriParts.Length)
-                return false;
-
-            bool mismatch = false;
-            for (int i = 0; i < Math.Min(robotInstructionUriParts.Length, uriParts.Length); i++)
-            {
-                if (!string.Equals(uriParts[i], robotInstructionUriParts[i], StringComparison.OrdinalIgnoreCase))
-                {
-                    mismatch = true;
-                    break;
-                }
-            }
-            if (mismatch)
-            {
-                return false;
-            }
-
-            return true;
-        }
-
-        private static bool CheckDisallowedEntry(DisallowEntry entry, string[] uriParts, out bool allow)
-        {
-            allow = true;
-            if (entry.Url == null)
-                return false;
-
-            string[] robotInstructionUriParts = entry.Url.PathAndQuery.Split(PathSeparator, StringSplitOptions.RemoveEmptyEntries);
-
-            if (robotInstructionUriParts.Length > uriParts.Length)
-                return false;
-
-            string path = entry.Url.PathAndQuery;
-            bool lastPartIsComplete = path.Length > 0 && path[path.Length - 1] == '/';
-
-            int end = Math.Min(robotInstructionUriParts.Length, uriParts.Length);
-            bool mismatch = false;
-            for (int i = 0; i < end; i++)
-            {
-                int index1 = i, index2 = i;
-                if (entry.Inverted)
-                {
-                    index1 = robotInstructionUriParts.Length - i - 1;
-                    index2 = uriParts.Length - i - 1;
-                }
-
-                bool partIsComplete = i < end - 1 || lastPartIsComplete;
-
-                if (IsMismatch(robotInstructionUriParts[index1], uriParts[index2], partIsComplete))
-                {
-                    mismatch = true;
-                    break;
-                }
-            }
-            if (!mismatch)
-            {
-                allow = false;
-                return true;
-            }
-
-            return false;
-        }
-
-        private static bool IsMismatch(string regsiteredPart, string testedPart, bool partIsComplete)
-        {
-            if (string.Equals("*", regsiteredPart, StringComparison.OrdinalIgnoreCase))
-                return false;
-            if (string.Equals(testedPart, regsiteredPart, StringComparison.OrdinalIgnoreCase))
-                return false;
-            if (!partIsComplete && testedPart.StartsWith(regsiteredPart, StringComparison.OrdinalIgnoreCase))
-                return false;
-
-            return true;
         }
 
 #endregion

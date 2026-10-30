@@ -6,11 +6,11 @@ namespace Robots.Model
 {
     public abstract class Entry
     {
-        private const string USER_AGENT_KEYWORD = "user-agent:";
-        private const string DISALLOW_KEYWORD = "disallow:";
-        private const string ALLOW_KEYWORD = "allow:";
-        private const string CRAWL_DELAY_KEYWORD = "crawl-delay:";
-        private const string SITEMAP_KEYWORD = "sitemap:";
+        private const string USER_AGENT_KEYWORD = "user-agent";
+        private const string DISALLOW_KEYWORD = "disallow";
+        private const string ALLOW_KEYWORD = "allow";
+        private const string CRAWL_DELAY_KEYWORD = "crawl-delay";
+        private const string SITEMAP_KEYWORD = "sitemap";
 
         protected Entry(EntryType type)
         {
@@ -49,115 +49,83 @@ namespace Robots.Model
             if (baseUri == null)
                 throw new ArgumentNullException(nameof(baseUri));
 
-
             entry = null;
 
             if (string.IsNullOrEmpty(entryText))
                 return false;
 
-            EntryType type = EntryType.Invalid;
+            // RFC 9309, section 2.2.3: '#' starts a comment anywhere on the line.
             string comment = string.Empty;
-
             int commentPosition = entryText.IndexOf('#');
-            if (commentPosition == 0)
-            {
-                type = EntryType.Comment;
-            }
-            if (commentPosition >= 0 && 
-                (commentPosition == 0 || entryText[commentPosition - 1] == ' '))
+            if (commentPosition >= 0)
             {
                 comment = entryText.Substring(commentPosition + 1);
                 entryText = entryText.Substring(0, commentPosition);
             }
 
-            if (string.IsNullOrEmpty(entryText))
+            // A UTF-8 byte order mark that reached the text, for example through LoadContent, is skipped.
+            entryText = entryText.TrimStart('﻿').Trim();
+            if (entryText.Length == 0)
             {
-                entry = CreateEntry(type);
+                if (commentPosition < 0)
+                    return false;
+
+                entry = CreateEntry(EntryType.Comment);
                 entry.Comment = comment;
                 return true;
             }
+
+            // RFC 9309, section 2.2: <key> *WS ":" *WS <value>, with case-insensitive keys.
+            int separator = entryText.IndexOf(':');
+            if (separator < 0)
+                return false;
+
+            string key = entryText.Substring(0, separator).Trim();
+            string value = entryText.Substring(separator + 1).Trim();
+
             try
             {
-                if (entryText.StartsWith(USER_AGENT_KEYWORD, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(key, USER_AGENT_KEYWORD, StringComparison.OrdinalIgnoreCase))
                 {
-                    type = EntryType.UserAgent;
-                    entry = CreateEntry(type);
-                    entry.Comment = comment;
-                    string userAgent = entryText.Substring(USER_AGENT_KEYWORD.Length).Trim().TrimEnd('?');
+                    string userAgent = value.TrimEnd('?');
+                    if (userAgent.Length == 0)
+                        return false;
 
-                    if(userAgent == null || string.IsNullOrEmpty(userAgent.Trim()))
-                    {
-                        entry = null;
-                        return false;                         
-                    }
-                    else
-                    {
-                         ((UserAgentEntry) entry).UserAgent = userAgent;
-                    }
+                    entry = new UserAgentEntry { UserAgent = userAgent, Comment = comment };
                 }
-                else if (entryText.StartsWith(DISALLOW_KEYWORD, StringComparison.OrdinalIgnoreCase))
+                else if (string.Equals(key, DISALLOW_KEYWORD, StringComparison.OrdinalIgnoreCase))
                 {
-                    type = EntryType.Disallow;
-                    bool inverted = EndsWithDollar(entryText);
-                    string value = entryText.Substring(DISALLOW_KEYWORD.Length).Trim();
+                    // An empty Disallow disallows nothing.
+                    if (value.Length == 0)
+                        return false;
 
-                    Uri? url;
-                    if (!string.IsNullOrEmpty(value) && Uri.TryCreate(baseUri, value, out url))
-                    {
-                        entry = CreateEntry(type);
-                        entry.Comment = comment;
-                        ((UrlEntry)entry).Url = url;
-                        ((UrlEntry)entry).Inverted = inverted;
-                    }
+                    entry = CreateRule(new DisallowEntry(), baseUri, value, comment);
                 }
-                else if (entryText.StartsWith(ALLOW_KEYWORD, StringComparison.OrdinalIgnoreCase))
+                else if (string.Equals(key, ALLOW_KEYWORD, StringComparison.OrdinalIgnoreCase))
                 {
-                    type = EntryType.Allow;
-                    bool inverted = EndsWithDollar(entryText);
-                    string value = entryText.Substring(ALLOW_KEYWORD.Length).Trim().TrimEnd('?');
+                    // An empty Allow allows nothing beyond what is already allowed.
+                    if (value.Length == 0)
+                        return false;
 
-                    Uri? url;
-                    if (Uri.TryCreate(baseUri, value, out url))
-                    {
-                        entry = CreateEntry(type);
-                        entry.Comment = comment;
-                        ((UrlEntry)entry).Url = url;
-                        ((UrlEntry)entry).Inverted = inverted;
-                    }
+                    entry = CreateRule(new AllowEntry(), baseUri, value, comment);
                 }
-                else if (entryText.StartsWith(CRAWL_DELAY_KEYWORD, StringComparison.OrdinalIgnoreCase))
+                else if (string.Equals(key, CRAWL_DELAY_KEYWORD, StringComparison.OrdinalIgnoreCase))
                 {
-                    type = EntryType.CrawlDelay;
-                    string value = entryText.Substring(CRAWL_DELAY_KEYWORD.Length).Trim().TrimEnd('?');
-
-                    entry = CreateEntry(type);
-                    entry.Comment = comment;
-
                     int crawlDelay;
-                    ((CrawlDelayEntry)entry).CrawlDelay = int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out crawlDelay)
-                        ? crawlDelay
-                        : 0;
+                    entry = new CrawlDelayEntry
+                    {
+                        Comment = comment,
+                        CrawlDelay = int.TryParse(value.TrimEnd('?'), NumberStyles.Integer, CultureInfo.InvariantCulture, out crawlDelay)
+                            ? crawlDelay
+                            : 0
+                    };
                 }
-                else if (entryText.StartsWith(SITEMAP_KEYWORD, StringComparison.OrdinalIgnoreCase))
+                else if (string.Equals(key, SITEMAP_KEYWORD, StringComparison.OrdinalIgnoreCase))
                 {
-                    type = EntryType.Sitemap;
-                    string value = entryText.Substring(SITEMAP_KEYWORD.Length).Trim().TrimEnd('?');
-
-                    entry = CreateEntry(type);
-                    entry.Comment = comment;
-
-                    try
-                    {
-                        ((SitemapEntry)entry).SitemapUrl = value;
-                    }
-                    catch
-                    {
-                        ((SitemapEntry)entry).SitemapUrl = "";
-                    }
+                    entry = new SitemapEntry { Comment = comment, SitemapUrl = value.TrimEnd('?') };
                 }
                 else
                 {
-                    entry = null;
                     return false;
                 }
             }
@@ -166,9 +134,21 @@ namespace Robots.Model
                 entry = null;
                 return false;
             }
-            if (entry == null)
-                return false;
+
             return true;
+        }
+
+        private static UrlEntry CreateRule(UrlEntry rule, Uri baseUri, string value, string comment)
+        {
+            Uri? url;
+            Uri.TryCreate(baseUri, value, out url);
+
+            rule.Comment = comment;
+            rule.Url = url;
+            rule.Inverted = EndsWithDollar(value);
+            // Matching uses the pattern as written: Url would resolve "..", and '*' and '$' have no meaning in it.
+            rule.PathPattern = RobotsPattern.NormalizePattern(value);
+            return rule;
         }
 
         private static bool EndsWithDollar(string text)
