@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -10,6 +11,8 @@ namespace Robots
     /// </summary>
     internal sealed class LengthLimitedStream : Stream
     {
+        [SuppressMessage("Usage", "CA2213:Disposable fields should be disposed",
+            Justification = "The caller owns the wrapped stream and disposes it; this wrapper only limits how much is read.")]
         private readonly Stream _inner;
         private readonly byte[] _probe = new byte[1];
         private long _remaining;

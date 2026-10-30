@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
@@ -9,6 +10,8 @@ using Robots.Model;
 
 namespace Robots
 {
+    [SuppressMessage("Naming", "CA1724:Type names should not match namespaces",
+        Justification = "The class and its namespace were both named Robots in 1.x; renaming either breaks every caller, so it waits for a major version that bundles other breaking renames.")]
     public class Robots : IRobots
     {
         #region Private Fields
@@ -59,11 +62,13 @@ namespace Robots
             _httpClient = httpClient;
         }
 
+        [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
+            Justification = "The HttpClient owns the handler (disposeHandler: true), which CA2000 can't see; the client itself is the process-lifetime DefaultHttpClient.")]
         private static HttpClient CreateDefaultHttpClient()
         {
 #if NET5_0_OR_GREATER
             // Recycle pooled connections so a long-lived client picks up DNS changes.
-            return new HttpClient(new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) });
+            return new HttpClient(new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) }, disposeHandler: true);
 #else
             return new HttpClient();
 #endif
@@ -340,6 +345,8 @@ namespace Robots
             return baseUri;
         }
 
+        [SuppressMessage("Performance", "CA1849:Call async methods when in an async method",
+            Justification = "With isAsync false this is the synchronous path behind Load(Uri): HttpClient.Send and ReadAsStream must stay synchronous so Load never waits on a task.")]
         private async Task LoadCoreAsync(Uri robotsUri, bool isAsync, CancellationToken cancellationToken)
         {
             var uriBuilder = new UriBuilder(robotsUri) { Path = "/robots.txt" };
@@ -394,8 +401,10 @@ namespace Robots
 #endif
                     {
                         // RFC 9309 2.5: parse at most MaxDownloadBytes, so a huge or endless response can't exhaust memory.
-                        var limitedStream = new LengthLimitedStream(responseStream, MaxDownloadBytes);
-                        await LoadCoreAsync(limitedStream, baseUri, isAsync, cancellationToken).ConfigureAwait(false);
+                        using (var limitedStream = new LengthLimitedStream(responseStream, MaxDownloadBytes))
+                        {
+                            await LoadCoreAsync(limitedStream, baseUri, isAsync, cancellationToken).ConfigureAwait(false);
+                        }
                     }
                 }
             }
@@ -443,6 +452,8 @@ namespace Robots
             while (Interlocked.CompareExchange(ref _state, updated, current) != current);
         }
 
+        [SuppressMessage("Performance", "CA1849:Call async methods when in an async method",
+            Justification = "With isAsync false this is the synchronous path behind Load and Add: ReadLine must stay synchronous so they never wait on a task.")]
         private static async Task<List<Entry>> ParseAsync(TextReader reader, Uri baseUri, bool isAsync, LengthLimitedStream? limitedStream, CancellationToken cancellationToken)
         {
             List<Entry> entries = new List<Entry>();
@@ -598,6 +609,11 @@ namespace Robots
         /// </param>
         public bool Allowed(Uri uri, string userAgent)
         {
+            if (uri == null)
+                throw new ArgumentNullException(nameof(uri));
+            if (userAgent == null)
+                throw new ArgumentNullException(nameof(userAgent));
+
             // One snapshot for the whole check, so a concurrent load can't mix two files.
             var state = Volatile.Read(ref _state);
             if (state.Entries.Count == 0)

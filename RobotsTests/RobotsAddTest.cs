@@ -1,9 +1,15 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+
+// CA2234 (pass Uri instead of string) is disabled for this file on purpose: these tests call the string
+// overloads, such as Allowed(string) and LoadContent(string, string), because they are the public API the
+// README documents and callers use, so they need test coverage.
+#pragma warning disable CA2234
 
 namespace RobotsTests
 {
@@ -11,6 +17,8 @@ namespace RobotsTests
     /// Tests for AddContent, Add and AddAsync, which add rules to the loaded ones the way 1.x did when loading twice.
     /// </summary>
     [TestClass]
+    [SuppressMessage("Maintainability", "CA1515:Consider making public types internal",
+        Justification = "MSTest discovers and creates test classes through reflection. Internal test classes need [DiscoverInternals] and then trip CA1812 (never instantiated) instead, because the analyzer can't see MSTest create them.")]
     public class RobotsAddTest
     {
         private const string SiteUrl = "http://www.test.com";
@@ -108,7 +116,7 @@ namespace RobotsTests
 
             using (var stream = new MemoryStream(Encoding.UTF8.GetBytes("User-agent: *\nDisallow: /b")))
             {
-                await robots.AddAsync(stream, TestContext.CancellationToken);
+                await robots.AddAsync(stream, TestContext.CancellationToken).ConfigureAwait(false);
 
                 Assert.IsTrue(stream.CanRead);
             }
@@ -144,7 +152,7 @@ namespace RobotsTests
                 checkedLines++;
             }))
             {
-                await robots.AddAsync(reader, TestContext.CancellationToken);
+                await robots.AddAsync(reader, TestContext.CancellationToken).ConfigureAwait(false);
             }
 
             // Two lines plus the read that returns null.
@@ -164,7 +172,7 @@ namespace RobotsTests
                     cancellation.Cancel();
             }))
             {
-                await Assert.ThrowsAsync<OperationCanceledException>(() => robots.AddAsync(reader, cancellation.Token));
+                await Assert.ThrowsAsync<OperationCanceledException>(() => robots.AddAsync(reader, cancellation.Token)).ConfigureAwait(false);
             }
 
             Assert.IsFalse(robots.Allowed("/a"));
@@ -197,8 +205,8 @@ namespace RobotsTests
             Assert.ThrowsExactly<ArgumentNullException>(() => robots.AddContent(null!));
             Assert.ThrowsExactly<ArgumentNullException>(() => robots.Add((Stream)null!));
             Assert.ThrowsExactly<ArgumentNullException>(() => robots.Add((TextReader)null!));
-            await Assert.ThrowsExactlyAsync<ArgumentNullException>(() => robots.AddAsync((Stream)null!, TestContext.CancellationToken));
-            await Assert.ThrowsExactlyAsync<ArgumentNullException>(() => robots.AddAsync((TextReader)null!, TestContext.CancellationToken));
+            await Assert.ThrowsExactlyAsync<ArgumentNullException>(() => robots.AddAsync((Stream)null!, TestContext.CancellationToken)).ConfigureAwait(false);
+            await Assert.ThrowsExactlyAsync<ArgumentNullException>(() => robots.AddAsync((TextReader)null!, TestContext.CancellationToken)).ConfigureAwait(false);
         }
     }
 }

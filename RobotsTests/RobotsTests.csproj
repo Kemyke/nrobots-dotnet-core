@@ -6,6 +6,7 @@
     <RootNamespace>RobotsTests</RootNamespace>
     <!-- Run every MSTest analyzer, so the tests keep following current MSTest practice. -->
     <MSTestAnalysisMode>All</MSTestAnalysisMode>
+    <IsTestProject>true</IsTestProject>
     <!-- Test names use underscores to read as sentences. -->
     <NoWarn>$(NoWarn);CA1707</NoWarn>
   </PropertyGroup>

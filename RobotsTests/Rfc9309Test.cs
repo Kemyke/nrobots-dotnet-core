@@ -1,8 +1,14 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Text;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+
+// CA2234 (pass Uri instead of string) is disabled for this file on purpose: these tests call the string
+// overloads, such as Allowed(string) and LoadContent(string, string), because they are the public API the
+// README documents and callers use, so they need test coverage.
+#pragma warning disable CA2234
 
 namespace RobotsTests
 {
@@ -13,6 +19,8 @@ namespace RobotsTests
     /// Where this library deliberately differs from that file, a comment says why.
     /// </summary>
     [TestClass]
+    [SuppressMessage("Maintainability", "CA1515:Consider making public types internal",
+        Justification = "MSTest discovers and creates test classes through reflection. Internal test classes need [DiscoverInternals] and then trip CA1812 (never instantiated) instead, because the analyzer can't see MSTest create them.")]
     public class Rfc9309Test
     {
         private static bool IsUserAgentAllowed(string robotsTxt, string userAgent, string url)

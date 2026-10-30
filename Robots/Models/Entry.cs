@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 
@@ -56,7 +56,7 @@ namespace Robots.Model
 
             // RFC 9309, section 2.2.3: '#' starts a comment anywhere on the line.
             string comment = string.Empty;
-            int commentPosition = entryText.IndexOf('#');
+            int commentPosition = RobotsPattern.IndexOfOrdinal(entryText, '#');
             if (commentPosition >= 0)
             {
                 comment = entryText.Substring(commentPosition + 1);
@@ -76,68 +76,62 @@ namespace Robots.Model
             }
 
             // RFC 9309, section 2.2: <key> *WS ":" *WS <value>, with case-insensitive keys.
-            int separator = entryText.IndexOf(':');
+            int separator = RobotsPattern.IndexOfOrdinal(entryText, ':');
             if (separator < 0)
                 return false;
 
             string key = entryText.Substring(0, separator).Trim();
             string value = entryText.Substring(separator + 1).Trim();
 
-            try
+            if (string.Equals(key, USER_AGENT_KEYWORD, StringComparison.OrdinalIgnoreCase))
             {
-                if (string.Equals(key, USER_AGENT_KEYWORD, StringComparison.OrdinalIgnoreCase))
-                {
-                    string userAgent = value.TrimEnd('?');
-                    if (userAgent.Length == 0)
-                        return false;
-
-                    entry = new UserAgentEntry { UserAgent = userAgent, Comment = comment };
-                }
-                else if (string.Equals(key, DISALLOW_KEYWORD, StringComparison.OrdinalIgnoreCase))
-                {
-                    // An empty Disallow disallows nothing.
-                    if (value.Length == 0)
-                        return false;
-
-                    entry = CreateRule(new DisallowEntry(), baseUri, value, comment);
-                }
-                else if (string.Equals(key, ALLOW_KEYWORD, StringComparison.OrdinalIgnoreCase))
-                {
-                    // An empty Allow allows nothing beyond what is already allowed.
-                    if (value.Length == 0)
-                        return false;
-
-                    entry = CreateRule(new AllowEntry(), baseUri, value, comment);
-                }
-                else if (string.Equals(key, CRAWL_DELAY_KEYWORD, StringComparison.OrdinalIgnoreCase))
-                {
-                    int crawlDelay;
-                    entry = new CrawlDelayEntry
-                    {
-                        Comment = comment,
-                        CrawlDelay = int.TryParse(value.TrimEnd('?'), NumberStyles.Integer, CultureInfo.InvariantCulture, out crawlDelay)
-                            ? crawlDelay
-                            : 0
-                    };
-                }
-                else if (string.Equals(key, SITEMAP_KEYWORD, StringComparison.OrdinalIgnoreCase))
-                {
-                    entry = new SitemapEntry { Comment = comment, SitemapUrl = value.TrimEnd('?') };
-                }
-                else
-                {
+                string userAgent = value.TrimEnd('?');
+                if (userAgent.Length == 0)
                     return false;
-                }
+
+                entry = new UserAgentEntry { UserAgent = userAgent, Comment = comment };
             }
-            catch (Exception)
+            else if (string.Equals(key, DISALLOW_KEYWORD, StringComparison.OrdinalIgnoreCase))
             {
-                entry = null;
+                // An empty Disallow disallows nothing.
+                if (value.Length == 0)
+                    return false;
+
+                entry = CreateRule(new DisallowEntry(), baseUri, value, comment);
+            }
+            else if (string.Equals(key, ALLOW_KEYWORD, StringComparison.OrdinalIgnoreCase))
+            {
+                // An empty Allow allows nothing beyond what is already allowed.
+                if (value.Length == 0)
+                    return false;
+
+                entry = CreateRule(new AllowEntry(), baseUri, value, comment);
+            }
+            else if (string.Equals(key, CRAWL_DELAY_KEYWORD, StringComparison.OrdinalIgnoreCase))
+            {
+                int crawlDelay;
+                entry = new CrawlDelayEntry
+                {
+                    Comment = comment,
+                    CrawlDelay = int.TryParse(value.TrimEnd('?'), NumberStyles.Integer, CultureInfo.InvariantCulture, out crawlDelay)
+                        ? crawlDelay
+                        : 0
+                };
+            }
+            else if (string.Equals(key, SITEMAP_KEYWORD, StringComparison.OrdinalIgnoreCase))
+            {
+                entry = new SitemapEntry { Comment = comment, SitemapUrl = value.TrimEnd('?') };
+            }
+            else
+            {
                 return false;
             }
 
             return true;
         }
 
+        [SuppressMessage("Usage", "CA2234:Pass system uri objects instead of strings",
+            Justification = "value is a robots.txt path pattern that may contain '*' and '$', not a URI; this TryCreate is what turns it into the informational Url.")]
         private static UrlEntry CreateRule(UrlEntry rule, Uri baseUri, string value, string comment)
         {
             Uri? url;

@@ -136,7 +136,7 @@ Breaking changes:
 The [migration guide](MIGRATION.md) explains each change with examples.
 
 ## Building:
-Requires the .NET 10 SDK (10.0.403 or later). The build treats warnings as errors, with nullable reference types and the recommended .NET analyzers enabled.
+Requires the .NET 10 SDK (10.0.403 or later). The build treats warnings as errors, with nullable reference types and every .NET analyzer rule enabled (`AnalysisLevel` `latest-all`), so a newer SDK's new rules fail the build until the code complies. Where code deliberately departs from a rule, it is suppressed at that spot with a `Justification` saying why.
 
 ```
 dotnet build Robots.slnx

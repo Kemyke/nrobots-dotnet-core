@@ -1,8 +1,14 @@
 ﻿using System;
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Threading.Tasks;
+
+// CA2234 (pass Uri instead of string) is disabled for this file on purpose: these tests call the string
+// overloads, such as Allowed(string) and LoadContent(string, string), because they are the public API the
+// README documents and callers use, so they need test coverage.
+#pragma warning disable CA2234
 
 namespace RobotsTests
 {
@@ -11,6 +17,8 @@ namespace RobotsTests
     ///to contain all RobotsTest Unit Tests
     ///</summary>
     [TestClass]
+    [SuppressMessage("Maintainability", "CA1515:Consider making public types internal",
+        Justification = "MSTest discovers and creates test classes through reflection. Internal test classes need [DiscoverInternals] and then trip CA1812 (never instantiated) instead, because the analyzer can't see MSTest create them.")]
     public class RobotsTest
     {
         private const string BASE_URL = "http://www.test.com";
@@ -42,15 +50,15 @@ Allow: /allowedfolder",
 
         private async Task<Robots.Robots> LoadRobotsUrlAsync()
         {
-            var handler = FakeHttpMessageHandler.Serving(
+            using (var handler = FakeHttpMessageHandler.Serving(
         @"User-agent: *
 Disallow: /cashback/admin
 Allow: /entertainment
-Disallow: /account/");
-            using (var client = new HttpClient(handler))
+Disallow: /account/"))
+            using (var client = new HttpClient(handler, disposeHandler: false))
             {
                 var robots = new Robots.Robots(client);
-                await robots.LoadAsync(new Uri(BASE_URL), TestContext.CancellationToken);
+                await robots.LoadAsync(new Uri(BASE_URL), TestContext.CancellationToken).ConfigureAwait(false);
                 return robots;
             }
         }
@@ -183,7 +191,7 @@ Disallow: /?category=another&color=red
         [TestMethod]
         public async Task Create_robots_with_uri_Test()
         {
-            var robots = await LoadRobotsUrlAsync();
+            var robots = await LoadRobotsUrlAsync().ConfigureAwait(false);
         }
 
         [TestMethod]
@@ -352,7 +360,7 @@ Allow: /?public/public"
         [TestMethod]
         public async Task Uri_loaded_disallow_subfolder_Test()
         {
-            var robots = await LoadRobotsUrlAsync();
+            var robots = await LoadRobotsUrlAsync().ConfigureAwait(false);
             Assert.IsFalse(robots.Allowed("/cashback/admin"));
             Assert.IsFalse(robots.Allowed("/cashback/admin/aaa/tool.html"));
         }
@@ -360,7 +368,7 @@ Allow: /?public/public"
         [TestMethod]
         public async Task Uri_loaded_allow_folder_Test()
         {
-            var robots = await LoadRobotsUrlAsync();
+            var robots = await LoadRobotsUrlAsync().ConfigureAwait(false);
             bool actual = robots.Allowed("/entertainment");
             Assert.IsTrue(actual);
         }
@@ -368,7 +376,7 @@ Allow: /?public/public"
         [TestMethod]
         public async Task Uri_loaded_allow_subfolder_Test()
         {
-            var robots = await LoadRobotsUrlAsync();
+            var robots = await LoadRobotsUrlAsync().ConfigureAwait(false);
             bool actual = robots.Allowed("/entertainment/music");
             Assert.IsTrue(actual);
         }

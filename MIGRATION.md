@@ -391,6 +391,8 @@ if (baseUri != null && Entry.TryParse(baseUri, line, out var entry))
 * Checking a relative Url with `Allowed` on an instance that has rules but no `BaseUri`, for example after setting `BaseUri` to null, throws `InvalidOperationException` with a clear message, instead of `ArgumentNullException`. An instance without rules still allows everything.
 * `RobotsBuilder.Allow` or `Disallow` before `ForUserAgent` throws `InvalidOperationException`, instead of `NullReferenceException`.
 * An `AllowEntry` or `DisallowEntry` you create without a `Url` never matches, instead of throwing `NullReferenceException` from `Allowed`.
+* `Allowed(Uri, string)` throws `ArgumentNullException` for a null Url or user agent.
+* `UserAgents` and `BrowserUserAgents` are static classes: they only hold constants. `BrowserUserAgents.AllAgents` still works, but the classes can no longer be created or derived from.
 
 ## Thread safety
 

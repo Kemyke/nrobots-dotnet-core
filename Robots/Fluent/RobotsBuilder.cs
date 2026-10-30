@@ -47,15 +47,12 @@ namespace Robots.Fluent
 
         public RobotsBuilder Disallow(string url)
         {
-            return DisallowWithComment(url, string.Empty);
+            return DisallowWithComment(new Uri(_baseUri, url), string.Empty);
         }
 
         public RobotsBuilder DisallowWithComment(string url, string comment)
         {
-            var disallowEntry = new DisallowEntry { Url = new Uri(_baseUri, url), Comment = comment };
-            LastUserAgent.AddEntry(disallowEntry);
-
-            return this;
+            return DisallowWithComment(new Uri(_baseUri, url), comment);
         }
 
         public RobotsBuilder Disallow(Uri uri)
@@ -74,15 +71,12 @@ namespace Robots.Fluent
 
         public RobotsBuilder Allow(string url)
         {
-            return AllowWithComment(url, string.Empty);
+            return AllowWithComment(new Uri(_baseUri, url), string.Empty);
         }
 
         public RobotsBuilder AllowWithComment(string url, string comment)
         {
-            var allowEntry = new AllowEntry { Url = new Uri(_baseUri, url), Comment = comment };
-            LastUserAgent.AddEntry(allowEntry);
-
-            return this;
+            return AllowWithComment(new Uri(_baseUri, url), comment);
         }
 
         public RobotsBuilder Allow(Uri uri)

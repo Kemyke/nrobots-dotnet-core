@@ -1,4 +1,5 @@
-﻿using Robots.Model;
+﻿using System.Diagnostics.CodeAnalysis;
+using Robots.Model;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
 
@@ -11,12 +12,14 @@ namespace RobotsTests
     ///to contain all EntryTest Unit Tests
     ///</summary>
     [TestClass]
+    [SuppressMessage("Maintainability", "CA1515:Consider making public types internal",
+        Justification = "MSTest discovers and creates test classes through reflection. Internal test classes need [DiscoverInternals] and then trip CA1812 (never instantiated) instead, because the analyzer can't see MSTest create them.")]
     public class EntryTest
     {
         [TestMethod]
         public void CommentTest()
         {
-            Entry target = new UserAgentEntry(); // TODO: Initialize to an appropriate value
+            Entry target = new UserAgentEntry();
             const string expected = "comment";
             target.Comment = expected;
             string actual = target.Comment;
@@ -26,7 +29,7 @@ namespace RobotsTests
         [TestMethod]
         public void HasCommentTest()
         {
-            Entry target = new UserAgentEntry(); // TODO: Initialize to an appropriate value
+            Entry target = new UserAgentEntry();
             bool actual = target.HasComment;
             Assert.IsFalse(actual);
         }
@@ -39,12 +42,6 @@ namespace RobotsTests
             Assert.IsTrue(actual);
         }
 
-        internal virtual Entry? CreateEntry()
-        {
-            // TODO: Instantiate an appropriate concrete class.
-            Entry? target = null;
-            return target;
-        }
 
         [TestMethod]
         public void TryParse_good_UserAgent_Test()

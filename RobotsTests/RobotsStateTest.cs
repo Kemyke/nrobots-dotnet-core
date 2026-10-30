@@ -1,9 +1,15 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+
+// CA2234 (pass Uri instead of string) is disabled for this file on purpose: these tests call the string
+// overloads, such as Allowed(string) and LoadContent(string, string), because they are the public API the
+// README documents and callers use, so they need test coverage.
+#pragma warning disable CA2234
 
 namespace RobotsTests
 {
@@ -11,6 +17,8 @@ namespace RobotsTests
     /// Tests that a load replaces the previous one as a whole, and that readers never see a partial load.
     /// </summary>
     [TestClass]
+    [SuppressMessage("Maintainability", "CA1515:Consider making public types internal",
+        Justification = "MSTest discovers and creates test classes through reflection. Internal test classes need [DiscoverInternals] and then trip CA1812 (never instantiated) instead, because the analyzer can't see MSTest create them.")]
     public class RobotsStateTest
     {
         private const string FirstUrl = "http://first.test.com";
@@ -60,7 +68,7 @@ namespace RobotsTests
 
             using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(SecondContent)))
             {
-                await robots.LoadAsync(stream, SecondUrl, TestContext.CancellationToken);
+                await robots.LoadAsync(stream, SecondUrl, TestContext.CancellationToken).ConfigureAwait(false);
             }
 
             AssertSecondLoaded(robots);
@@ -98,7 +106,7 @@ namespace RobotsTests
                 checkedLines++;
             }))
             {
-                await robots.LoadAsync(reader, new Uri(SecondUrl), TestContext.CancellationToken);
+                await robots.LoadAsync(reader, new Uri(SecondUrl), TestContext.CancellationToken).ConfigureAwait(false);
             }
 
             Assert.AreEqual(4, checkedLines);
@@ -134,7 +142,7 @@ namespace RobotsTests
                     cancellation.Cancel();
             }))
             {
-                await Assert.ThrowsAsync<OperationCanceledException>(() => robots.LoadAsync(reader, new Uri(SecondUrl), cancellation.Token));
+                await Assert.ThrowsAsync<OperationCanceledException>(() => robots.LoadAsync(reader, new Uri(SecondUrl), cancellation.Token)).ConfigureAwait(false);
             }
 
             AssertFirstLoaded(robots);
@@ -156,7 +164,7 @@ namespace RobotsTests
         {
             using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(FirstContent)))
             {
-                await new Robots.Robots().LoadAsync(stream, FirstUrl, TestContext.CancellationToken);
+                await new Robots.Robots().LoadAsync(stream, FirstUrl, TestContext.CancellationToken).ConfigureAwait(false);
 
                 Assert.IsTrue(stream.CanRead);
             }

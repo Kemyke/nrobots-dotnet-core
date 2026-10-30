@@ -1,9 +1,15 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+
+// CA2234 (pass Uri instead of string) is disabled for this file on purpose: these tests call the string
+// overloads, such as Allowed(string) and LoadContent(string, string), because they are the public API the
+// README documents and callers use, so they need test coverage.
+#pragma warning disable CA2234
 
 namespace RobotsTests
 {
@@ -11,6 +17,8 @@ namespace RobotsTests
     /// Tests for how loading over HTTP follows RFC 9309: status codes, the size limit and the User-Agent header.
     /// </summary>
     [TestClass]
+    [SuppressMessage("Maintainability", "CA1515:Consider making public types internal",
+        Justification = "MSTest discovers and creates test classes through reflection. Internal test classes need [DiscoverInternals] and then trip CA1812 (never instantiated) instead, because the analyzer can't see MSTest create them.")]
     public class RobotsHttpTest
     {
         private const string SiteUrl = "http://www.test.com/";
@@ -33,7 +41,8 @@ namespace RobotsTests
         [DataRow(HttpStatusCode.Gone)]
         public void Load_allows_everything_when_robots_txt_is_unavailable(HttpStatusCode status)
         {
-            using (var client = new HttpClient(FakeHttpMessageHandler.Returning(status)))
+            using (var handler = FakeHttpMessageHandler.Returning(status))
+            using (var client = new HttpClient(handler, disposeHandler: false))
             {
                 var robots = LoadedWithPrivateDisallowed(client);
 
@@ -48,11 +57,12 @@ namespace RobotsTests
         [TestMethod]
         public async Task LoadAsync_allows_everything_when_robots_txt_is_unavailable()
         {
-            using (var client = new HttpClient(FakeHttpMessageHandler.Returning(HttpStatusCode.NotFound)))
+            using (var handler = FakeHttpMessageHandler.Returning(HttpStatusCode.NotFound))
+            using (var client = new HttpClient(handler, disposeHandler: false))
             {
                 var robots = LoadedWithPrivateDisallowed(client);
 
-                await robots.LoadAsync(new Uri(SiteUrl), TestContext.CancellationToken);
+                await robots.LoadAsync(new Uri(SiteUrl), TestContext.CancellationToken).ConfigureAwait(false);
 
                 Assert.IsTrue(robots.Allowed("/private"));
             }
@@ -63,7 +73,8 @@ namespace RobotsTests
         [DataRow(HttpStatusCode.ServiceUnavailable)]
         public void Load_disallows_everything_when_robots_txt_is_unreachable(HttpStatusCode status)
         {
-            using (var client = new HttpClient(FakeHttpMessageHandler.Returning(status)))
+            using (var handler = FakeHttpMessageHandler.Returning(status))
+            using (var client = new HttpClient(handler, disposeHandler: false))
             {
                 var robots = new Robots.Robots(client);
 
@@ -79,11 +90,12 @@ namespace RobotsTests
         [TestMethod]
         public async Task LoadAsync_disallows_everything_when_robots_txt_is_unreachable()
         {
-            using (var client = new HttpClient(FakeHttpMessageHandler.Returning(HttpStatusCode.ServiceUnavailable)))
+            using (var handler = FakeHttpMessageHandler.Returning(HttpStatusCode.ServiceUnavailable))
+            using (var client = new HttpClient(handler, disposeHandler: false))
             {
                 var robots = new Robots.Robots(client);
 
-                await robots.LoadAsync(new Uri(SiteUrl), TestContext.CancellationToken);
+                await robots.LoadAsync(new Uri(SiteUrl), TestContext.CancellationToken).ConfigureAwait(false);
 
                 Assert.IsFalse(robots.Allowed("/public/page.html"));
             }
@@ -98,11 +110,12 @@ namespace RobotsTests
             int fillerLength = MaxDownloadBytes - header.Length - 12;
             string content = header + Comment(fillerLength) + cutLine + "Disallow: /after\n";
 
-            using (var client = new HttpClient(FakeHttpMessageHandler.Serving(content)))
+            using (var handler = FakeHttpMessageHandler.Serving(content))
+            using (var client = new HttpClient(handler, disposeHandler: false))
             {
                 var robots = new Robots.Robots(client);
 
-                await robots.LoadAsync(new Uri(SiteUrl), TestContext.CancellationToken);
+                await robots.LoadAsync(new Uri(SiteUrl), TestContext.CancellationToken).ConfigureAwait(false);
 
                 Assert.IsFalse(robots.Allowed("/before"));
                 // The cut-off "Disallow: /s" would block every path starting with /s; it is dropped instead.
@@ -118,7 +131,8 @@ namespace RobotsTests
             int fillerLength = MaxDownloadBytes - header.Length - 12;
             string content = header + Comment(fillerLength) + "Disallow: /straddle\nDisallow: /after\n";
 
-            using (var client = new HttpClient(FakeHttpMessageHandler.Serving(content)))
+            using (var handler = FakeHttpMessageHandler.Serving(content))
+            using (var client = new HttpClient(handler, disposeHandler: false))
             {
                 var robots = new Robots.Robots(client);
 
@@ -138,11 +152,12 @@ namespace RobotsTests
             string content = header + Comment(MaxDownloadBytes - header.Length - lastLine.Length) + lastLine;
             Assert.AreEqual(MaxDownloadBytes, Encoding.UTF8.GetByteCount(content));
 
-            using (var client = new HttpClient(FakeHttpMessageHandler.Serving(content)))
+            using (var handler = FakeHttpMessageHandler.Serving(content))
+            using (var client = new HttpClient(handler, disposeHandler: false))
             {
                 var robots = new Robots.Robots(client);
 
-                await robots.LoadAsync(new Uri(SiteUrl), TestContext.CancellationToken);
+                await robots.LoadAsync(new Uri(SiteUrl), TestContext.CancellationToken).ConfigureAwait(false);
 
                 Assert.IsFalse(robots.Allowed("/last"));
             }
@@ -159,13 +174,13 @@ namespace RobotsTests
         [TestMethod]
         public async Task Own_client_sends_its_own_User_Agent()
         {
-            var handler = FakeHttpMessageHandler.Serving("User-agent: *");
-            using (var client = new HttpClient(handler))
+            using (var handler = FakeHttpMessageHandler.Serving("User-agent: *"))
+            using (var client = new HttpClient(handler, disposeHandler: false))
             {
                 client.DefaultRequestHeaders.UserAgent.ParseAdd("ClientBot/3.1");
                 var robots = new Robots.Robots(client);
 
-                await robots.LoadAsync(new Uri(SiteUrl), TestContext.CancellationToken);
+                await robots.LoadAsync(new Uri(SiteUrl), TestContext.CancellationToken).ConfigureAwait(false);
 
                 Assert.IsNull(robots.UserAgent);
                 Assert.AreEqual("ClientBot/3.1", handler.UserAgents[0]);
@@ -175,13 +190,13 @@ namespace RobotsTests
         [TestMethod]
         public async Task UserAgent_is_sent_and_overrides_the_clients_own()
         {
-            var handler = FakeHttpMessageHandler.Serving("User-agent: *");
-            using (var client = new HttpClient(handler))
+            using (var handler = FakeHttpMessageHandler.Serving("User-agent: *"))
+            using (var client = new HttpClient(handler, disposeHandler: false))
             {
                 client.DefaultRequestHeaders.UserAgent.ParseAdd("ClientBot/3.1");
                 var robots = new Robots.Robots(client) { UserAgent = "MyCrawler/1.0 (+https://example.com/crawler)" };
 
-                await robots.LoadAsync(new Uri(SiteUrl), TestContext.CancellationToken);
+                await robots.LoadAsync(new Uri(SiteUrl), TestContext.CancellationToken).ConfigureAwait(false);
 
                 Assert.AreEqual("MyCrawler/1.0 (+https://example.com/crawler)", handler.UserAgents[0]);
             }
@@ -190,8 +205,8 @@ namespace RobotsTests
         [TestMethod]
         public void UserAgent_set_to_null_sends_none()
         {
-            var handler = FakeHttpMessageHandler.Serving("User-agent: *");
-            using (var client = new HttpClient(handler))
+            using (var handler = FakeHttpMessageHandler.Serving("User-agent: *"))
+            using (var client = new HttpClient(handler, disposeHandler: false))
             {
                 var robots = new Robots.Robots(client) { UserAgent = "MyCrawler/1.0" };
                 robots.UserAgent = null;

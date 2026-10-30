@@ -16,9 +16,11 @@
     <!-- The newest C# for every target; features that need runtime support still fail to compile on old targets. -->
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
-    <!-- The .NET analyzers run for every target, not only .NET 5+, with the recommended rules as warnings. -->
+    <!-- The .NET analyzers run for every target, not only .NET 5+, with every rule as a warning (and so, below,
+         an error). "latest" on purpose: a newer SDK's new rules should fail the build until the code complies.
+         Any exception is suppressed where it occurs, with a Justification saying why. -->
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
-    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <AnalysisLevel>latest-all</AnalysisLevel>
     <!-- CA1510 suggests ArgumentNullException.ThrowIfNull, which netstandard2.0 and net462 don't have. -->
     <NoWarn>$(NoWarn);CA1510</NoWarn>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>

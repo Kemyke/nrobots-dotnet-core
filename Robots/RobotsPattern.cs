@@ -73,7 +73,7 @@ namespace Robots
             bool anchored = pattern.Length > 0 && pattern[pattern.Length - 1] == '$';
             int patternLength = anchored ? pattern.Length - 1 : pattern.Length;
 
-            if (pattern.IndexOf('*') < 0)
+            if (IndexOfOrdinal(pattern, '*') < 0)
             {
                 return anchored
                     ? path.Length == patternLength && string.CompareOrdinal(path, 0, pattern, 0, patternLength) == 0
@@ -112,6 +112,19 @@ namespace Robots
             }
 
             return !anchored || positions[count - 1] == path.Length;
+        }
+
+        /// <summary>
+        /// IndexOf with an explicit ordinal comparison (CA1307). netstandard2.0 and net462 have no
+        /// IndexOf(char, StringComparison); their IndexOf(char) is already ordinal.
+        /// </summary>
+        public static int IndexOfOrdinal(string value, char c)
+        {
+#if NETCOREAPP2_1_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+            return value.IndexOf(c, StringComparison.Ordinal);
+#else
+            return value.IndexOf(c);
+#endif
         }
 
         /// <summary>
