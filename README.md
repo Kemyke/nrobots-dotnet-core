@@ -143,3 +143,5 @@ Requires the .NET 10 SDK (10.0.403 or later). The build treats warnings as error
 dotnet build Robots.slnx
 dotnet test --solution Robots.slnx
 ```
+
+The GitHub Actions workflow in `.github/workflows/build.yml` runs the same build, the tests and `dotnet pack` on Linux and Windows for every push and pull request.
