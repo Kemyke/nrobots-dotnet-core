@@ -55,6 +55,14 @@ robots.LoadContent("User-agent: *\nDisallow: /private", "https://www.example.com
 await robots.LoadAsync(stream, "https://www.example.com", cancellationToken);
 ```
 
+Each load replaces the rules loaded before. To add rules to them instead, for example your own rules on top of a site's robots.txt, use `AddContent`, `Add` or `AddAsync`:
+
+```csharp
+await robots.LoadAsync(new Uri("https://www.example.com"), cancellationToken);
+robots.AddContent("User-agent: *
+Disallow: /search");
+```
+
 Each `LoadAsync` overload has a synchronous `Load` counterpart. Prefer `LoadAsync` for Urls: on .NET Framework and .NET Standard, `Load(Uri)` blocks a thread until the download completes.
 
 ### User-Agent:
@@ -74,7 +82,7 @@ With your own `HttpClient`, `UserAgent` starts as `null` and the client's `Defau
 * Only the first 500 KiB is parsed; a line cut off by the limit is ignored. This doesn't apply to `Stream`, `TextReader` or string content you load yourself.
 
 ## Thread safety:
-A `Robots` instance can be queried from several threads at once, also while it is being reloaded. Each load replaces the previous rules in one step, so a query sees either the old rules or the new ones, never a mix. A load that fails or is cancelled keeps the previous rules.
+A `Robots` instance can be queried from several threads at once, also while rules are being loaded or added. A load replaces the rules and an add extends them, each in one step once the whole file has been read, so a query sees either the rules from before or after, never a mix. A load or add that fails or is cancelled keeps the rules from before.
 
 Build with `RobotsBuilder` on one thread; share the result once it is built.
 
@@ -82,14 +90,15 @@ Build with `RobotsBuilder` on one thread; share the result once it is built.
 * Targets `net10.0`, `netstandard2.0` and `net462`, replacing `net40`, `net451` and `netstandard1.1`.
 * `LoadAsync` overloads for `Uri`, `Stream` and `TextReader`, each taking a `CancellationToken`.
 * Downloads use `HttpClient` instead of the obsolete `WebRequest`, and a new `Robots(HttpClient)` constructor accepts your own client.
+* `AddContent`, `Add` and `AddAsync` add rules to the loaded ones.
 * Downloads follow RFC 9309 for status codes and size, and send a configurable `User-Agent`.
-* Safe to query from several threads, also while reloading.
+* Safe to query from several threads, also while loading or adding rules.
 
 Breaking changes:
-* `IRobots` has new `LoadAsync` members, so your own `IRobots` implementations must add them. Code that only calls `Robots` or `IRobots` needs no changes.
+* `IRobots` has new `LoadAsync` and `Add` members, so your own `IRobots` implementations must add them. Code that only calls `Robots` or `IRobots` needs no changes.
 * A failed download throws `HttpRequestException` instead of `WebException`.
 * A 4xx response allows everything and a 5xx response disallows everything, where 1.x threw `WebException`.
-* Loading into an instance that already holds rules replaces them; 1.x added the new rules to the old ones.
+* Loading into an instance that already holds rules replaces them; 1.x added the new rules to the old ones. Use `AddContent`, `Add` or `AddAsync` for the 1.x behaviour.
 
 The [migration guide](MIGRATION.md) explains each change with examples.
 

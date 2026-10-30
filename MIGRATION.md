@@ -7,10 +7,11 @@ NRobotsCore 2.0 keeps every 1.x method signature, so most code keeps compiling u
 | If your code... | Then |
 |---|---|
 | Targets .NET Framework 4.0–4.6.1 or .NET Standard 1.x | [Move to a supported framework](#supported-frameworks) |
-| Implements `IRobots` itself (including test fakes) | [Add the `LoadAsync` members](#irobots-has-new-members) |
+| Implements `IRobots` itself (including test fakes) | [Add the `LoadAsync` and `Add` members](#irobots-has-new-members) |
 | Catches `WebException` around `Load(Uri)` | [Catch `HttpRequestException` instead](#exceptions) |
 | Treats a 404 or 5xx error from `Load(Uri)` as "no rules" or retries on it | [Check the new status handling](#http-status-codes-rfc-9309) |
-| Calls `Load` more than once on the same instance | [Loads now replace earlier rules](#a-load-replaces-the-previous-rules) |
+| Calls `Load` more than once on the same instance to combine files | [Use `AddContent` for the extra files](#adding-rules-to-the-loaded-ones) |
+| Loads several sites into one instance | [Use one instance per site](#one-instance-per-site) |
 | Loads from a Url in a server or UI app | [Use `LoadAsync`](#prefer-loadasync) |
 | Passes its own `HttpClient` with a custom handler and calls `Load(Uri)` | [Check the handler supports `Send`](#your-own-httpclient) |
 | Filters or logs requests by User-Agent | [A User-Agent is now sent](#user-agent) |
@@ -29,13 +30,19 @@ The assembly version is now 2.0.0.0, and the assembly carries the package's auth
 
 ## IRobots has new members
 
-`IRobots` gained four methods:
+`IRobots` gained four `LoadAsync` methods and five methods that [add rules to the loaded ones](#adding-rules-to-the-loaded-ones):
 
 ```csharp
 Task LoadAsync(Uri robotsUri, CancellationToken cancellationToken = default(CancellationToken));
 Task LoadAsync(Stream stream, string baseUrl, CancellationToken cancellationToken = default(CancellationToken));
 Task LoadAsync(Stream stream, Uri baseUri, CancellationToken cancellationToken = default(CancellationToken));
 Task LoadAsync(TextReader reader, Uri baseUri, CancellationToken cancellationToken = default(CancellationToken));
+
+void AddContent(string fileContent);
+void Add(Stream stream);
+Task AddAsync(Stream stream, CancellationToken cancellationToken = default(CancellationToken));
+void Add(TextReader reader);
+Task AddAsync(TextReader reader, CancellationToken cancellationToken = default(CancellationToken));
 ```
 
 Code that only *calls* `IRobots` is unaffected. A class that *implements* it, such as a test fake, must add them:
@@ -66,6 +73,24 @@ public class FakeRobots : IRobots
     public Task LoadAsync(TextReader reader, Uri baseUri, CancellationToken cancellationToken = default(CancellationToken))
     {
         Load(reader, baseUri);
+        return Task.CompletedTask;
+    }
+
+    public void AddContent(string fileContent) { /* add the rules to your fake's state */ }
+
+    public void Add(Stream stream) { /* ... */ }
+
+    public Task AddAsync(Stream stream, CancellationToken cancellationToken = default(CancellationToken))
+    {
+        Add(stream);
+        return Task.CompletedTask;
+    }
+
+    public void Add(TextReader reader) { /* ... */ }
+
+    public Task AddAsync(TextReader reader, CancellationToken cancellationToken = default(CancellationToken))
+    {
+        Add(reader);
         return Task.CompletedTask;
     }
 }
@@ -154,22 +179,94 @@ if (!robots.Allowed("/"))
 
 Only the first 500 KiB of a downloaded robots.txt is parsed, as RFC 9309 allows. A line cut off by the limit is ignored. Content you load yourself from a `Stream`, `TextReader` or string isn't limited.
 
-## A load replaces the previous rules
+## Load replaces the rules, Add adds to them
 
-In 1.x, loading into an instance that already held rules added the new rules to the old ones. In 2.x each load replaces them:
+In 1.x, loading into an instance that already held rules added the new rules to the old ones. In 2.x, `Load`, `LoadAsync` and `LoadContent` replace them, and the new `AddContent`, `Add` and `AddAsync` [add to them](#adding-rules-to-the-loaded-ones) the way 1.x did:
 
 ```csharp
 var robots = new Robots.Robots();
-robots.LoadContent("User-agent: *\nDisallow: /a", "https://site-a.example");
-robots.LoadContent("User-agent: *\nDisallow: /b", "https://site-b.example");
+robots.LoadContent("User-agent: *\nDisallow: /a", "https://www.example.com");
+robots.LoadContent("User-agent: *\nDisallow: /b", "https://www.example.com");
 
 robots.Allowed("/a"); // 1.x: false (rules from both files). 2.x: true (only the second file)
 robots.Allowed("/b"); // false in both
 ```
 
-To combine several files, join the content and load it once. To check several sites, use one instance per site.
+A load or add that fails or is cancelled now keeps the rules from before, where 1.x could leave them half-loaded.
 
-A load that fails or is cancelled now keeps the previous rules, where 1.x could leave them half-loaded.
+### Adding rules to the loaded ones
+
+To keep the 1.x behaviour, load the first file and add the others with `AddContent`, `Add` or `AddAsync`. The result is the same as loading them one after another in 1.x:
+
+```csharp
+// 1.x
+robots.LoadContent(siteRules, "https://www.example.com");
+robots.LoadContent(extraRules, "https://www.example.com");
+
+// 2.x
+robots.LoadContent(siteRules, "https://www.example.com");
+robots.AddContent(extraRules);
+```
+
+The same works after a download, for example to add your own rules to a site's robots.txt:
+
+```csharp
+var robots = new Robots.Robots();
+await robots.LoadAsync(new Uri("https://www.example.com"), cancellationToken);
+
+robots.AddContent("User-agent: *\nDisallow: /search");   // never crawl the site's search pages
+
+using (var stream = File.OpenRead("extra-rules.txt"))
+{
+    await robots.AddAsync(stream, cancellationToken);
+}
+```
+
+How added rules combine with the loaded ones:
+
+* A group for an agent that already has one gets the new rules appended, so both files' rules apply. For a `Crawl-delay` in both, the first one wins.
+* Groups for new agents, comments and sitemaps are added after the existing ones.
+* Paths resolve against the current `BaseUri`, which doesn't change. In 1.x, `BaseUri` became the second load's base URL; that only matters if your two loads used different base URLs.
+* Adding needs a `BaseUri`: load first or set `BaseUri`, otherwise `InvalidOperationException` is thrown.
+
+Use `AddContent` rather than joining the texts yourself: joined text isn't always the same. A rule before the first `User-agent` line of the second file is ignored by 1.x and by `AddContent`, but in joined text it belongs to the first file's last group:
+
+```csharp
+robots.LoadContent("User-agent: *\nDisallow: /a", "https://www.example.com");
+robots.AddContent("Disallow: /b");
+robots.Allowed("/b"); // true, as in 1.x
+
+robots.LoadContent("User-agent: *\nDisallow: /a\nDisallow: /b", "https://www.example.com"); // joined text
+robots.Allowed("/b"); // false
+```
+
+### One instance per site
+
+A robots.txt only applies to its own site. 1.x let you load two sites into one instance, but then the second site's base URL replaced the first's and each site's rules applied to the other's paths. Keep one instance per site instead:
+
+```csharp
+var robotsBySite = new Dictionary<string, Robots.Robots>(StringComparer.OrdinalIgnoreCase);
+
+foreach (var url in urlsToCrawl)
+{
+    // "https://www.example.com" for "https://www.example.com/products/1"
+    string site = url.GetLeftPart(UriPartial.Authority);
+
+    if (!robotsBySite.TryGetValue(site, out var robots))
+    {
+        robots = new Robots.Robots { UserAgent = "MyCrawler/1.0 (+https://example.com/crawler)" };
+        await robots.LoadAsync(url, cancellationToken); // downloads {site}/robots.txt
+        robotsBySite.Add(site, robots);
+    }
+
+    if (robots.Allowed(url, "MyCrawler"))
+    {
+        // crawl url
+    }
+}
+```
+
+The dictionary isn't thread-safe; a crawler that loads from several threads needs a `ConcurrentDictionary` or a lock around it. A `Robots` instance itself is safe to query from any thread.
 
 ## Prefer LoadAsync
 
@@ -232,4 +329,4 @@ bool allowed = robots.Allowed("/page.html", "MyCrawler");
 
 ## Thread safety
 
-1.x was not safe to use from several threads while loading: queries during a load could throw `InvalidOperationException` or see half the rules. In 2.x, an instance can be queried from any number of threads, also while it reloads; each query sees either the old rules or the new ones. Build with `RobotsBuilder` on one thread and share the result once it is built.
+1.x was not safe to use from several threads while loading: queries during a load could throw `InvalidOperationException` or see half the rules. In 2.x, an instance can be queried from any number of threads, also while rules are being loaded or added; each query sees the rules from either before or after a load or add, never a mix. Build with `RobotsBuilder` on one thread and share the result once it is built.

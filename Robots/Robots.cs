@@ -249,6 +249,87 @@ namespace Robots
             return LoadCoreAsync(reader, baseUri, true, cancellationToken, null);
         }
 
+        /// <summary>
+        /// Adds the rules in a robots.txt string to the rules already loaded, as 1.x did when loading twice
+        /// into one instance. Relative paths resolve against <see cref="BaseUri"/>, which stays unchanged.
+        /// </summary>
+        /// <param name="fileContent">String containing the robots.txt rules to add. May not be null.</param>
+        /// <exception cref="InvalidOperationException">Nothing has been loaded and <see cref="BaseUri"/> isn't set.</exception>
+        public void AddContent(string fileContent)
+        {
+            if (fileContent == null)
+                throw new ArgumentNullException("fileContent");
+
+            using (var sr = new StringReader(fileContent))
+            {
+                Add(sr);
+            }
+        }
+
+        /// <summary>
+        /// Adds the rules in a robots.txt stream to the rules already loaded. See <see cref="AddContent"/>.
+        /// </summary>
+        /// <param name="stream">The input stream. May not be null.</param>
+        /// <exception cref="InvalidOperationException">Nothing has been loaded and <see cref="BaseUri"/> isn't set.</exception>
+        public void Add(Stream stream)
+        {
+            if (stream == null)
+                throw new ArgumentNullException("stream");
+
+            AddCoreAsync(stream, RequireBaseUri(), false, CancellationToken.None).GetAwaiter().GetResult();
+        }
+
+        /// <summary>
+        /// Adds the rules in a robots.txt stream to the rules already loaded. See <see cref="AddContent"/>.
+        /// </summary>
+        /// <param name="stream">The input stream. May not be null.</param>
+        /// <param name="cancellationToken">Cancels the read.</param>
+        /// <exception cref="InvalidOperationException">Nothing has been loaded and <see cref="BaseUri"/> isn't set.</exception>
+        public Task AddAsync(Stream stream, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            if (stream == null)
+                throw new ArgumentNullException("stream");
+
+            return AddCoreAsync(stream, RequireBaseUri(), true, cancellationToken);
+        }
+
+        /// <summary>
+        /// Adds the rules from a TextReader to the rules already loaded. See <see cref="AddContent"/>.
+        /// </summary>
+        /// <param name="reader">The TextReader with the robots.txt rules to add. May not be null.</param>
+        /// <exception cref="InvalidOperationException">Nothing has been loaded and <see cref="BaseUri"/> isn't set.</exception>
+        public void Add(TextReader reader)
+        {
+            if (reader == null)
+                throw new ArgumentNullException("reader");
+
+            // Completes synchronously on every target: the sync path only calls TextReader.ReadLine.
+            AddCoreAsync(reader, RequireBaseUri(), false, CancellationToken.None).GetAwaiter().GetResult();
+        }
+
+        /// <summary>
+        /// Adds the rules from a TextReader to the rules already loaded. See <see cref="AddContent"/>.
+        /// </summary>
+        /// <param name="reader">The TextReader with the robots.txt rules to add. May not be null.</param>
+        /// <param name="cancellationToken">Cancels the read.</param>
+        /// <exception cref="InvalidOperationException">Nothing has been loaded and <see cref="BaseUri"/> isn't set.</exception>
+        public Task AddAsync(TextReader reader, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            if (reader == null)
+                throw new ArgumentNullException("reader");
+
+            return AddCoreAsync(reader, RequireBaseUri(), true, cancellationToken);
+        }
+
+        private Uri RequireBaseUri()
+        {
+            var baseUri = Volatile.Read(ref _state).BaseUri;
+            if (baseUri == null)
+                throw new InvalidOperationException("Load a robots.txt or set BaseUri before adding rules.");
+
+            return baseUri;
+        }
+
         private static Uri ParseBaseUrl(string baseUrl)
         {
             Uri baseUri;
@@ -330,8 +411,39 @@ namespace Robots
 
         private async Task LoadCoreAsync(TextReader reader, Uri baseUri, bool isAsync, CancellationToken cancellationToken, LengthLimitedStream limitedStream)
         {
-            // Parse into a local list and publish it only once the whole file has been read: readers keep
-            // seeing the previous load until then, and a failed or cancelled load leaves it unchanged.
+            // Parse fully before publishing: readers keep seeing the previous load until then,
+            // and a failed or cancelled load leaves it unchanged.
+            var entries = await ParseAsync(reader, baseUri, isAsync, cancellationToken, limitedStream).ConfigureAwait(false);
+
+            // Replaces the previous load instead of adding to it.
+            Volatile.Write(ref _state, new State(baseUri, entries));
+        }
+
+        private async Task AddCoreAsync(Stream stream, Uri baseUri, bool isAsync, CancellationToken cancellationToken)
+        {
+            // leaveOpen: the caller owns the stream, so disposing the reader must not close it.
+            using (var reader = new StreamReader(stream, Encoding.UTF8, true, 1024, true))
+            {
+                await AddCoreAsync(reader, baseUri, isAsync, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        private async Task AddCoreAsync(TextReader reader, Uri baseUri, bool isAsync, CancellationToken cancellationToken)
+        {
+            var added = await ParseAsync(reader, baseUri, isAsync, cancellationToken, null).ConfigureAwait(false);
+
+            // Merge into the rules published now, and retry if a load or another add published in the meantime.
+            State current, updated;
+            do
+            {
+                current = Volatile.Read(ref _state);
+                updated = new State(current.BaseUri, Merge(current.Entries, added));
+            }
+            while (Interlocked.CompareExchange(ref _state, updated, current) != current);
+        }
+
+        private static async Task<List<Entry>> ParseAsync(TextReader reader, Uri baseUri, bool isAsync, CancellationToken cancellationToken, LengthLimitedStream limitedStream)
+        {
             List<Entry> entries = new List<Entry>();
             List<UserAgentEntry> userAgentsGroup = new List<UserAgentEntry>();
             bool addedEntriesToUserAgent = false;
@@ -368,8 +480,44 @@ namespace Robots
                 pendingLine = line;
             } while (true);
 
-            // Replaces the previous load instead of adding to it.
-            Volatile.Write(ref _state, new State(baseUri, entries));
+            return entries;
+        }
+
+        // Combines two parsed files the way 1.x did when loading twice into one instance: the added
+        // file was parsed on its own, and a group for an agent that already had one got its rules
+        // appended to that group. Merged groups are copies, so the published State is never modified.
+        private static List<Entry> Merge(List<Entry> existing, List<Entry> added)
+        {
+            var merged = new List<Entry>(existing);
+            foreach (var entry in added)
+            {
+                if (entry.Type == EntryType.UserAgent)
+                {
+                    var addedGroup = (UserAgentEntry)entry;
+                    int index = merged.FindIndex(e => e.Type == EntryType.UserAgent
+                        && string.Compare(((UserAgentEntry)e).UserAgent, addedGroup.UserAgent, StringComparison.OrdinalIgnoreCase) == 0);
+                    if (index >= 0)
+                    {
+                        merged[index] = Combine((UserAgentEntry)merged[index], addedGroup);
+                        continue;
+                    }
+                }
+
+                merged.Add(entry);
+            }
+
+            return merged;
+        }
+
+        private static UserAgentEntry Combine(UserAgentEntry existing, UserAgentEntry added)
+        {
+            var combined = new UserAgentEntry { UserAgent = existing.UserAgent, Comment = existing.Comment };
+            foreach (var entry in existing.Entries)
+                combined.AddEntry(entry);
+            foreach (var entry in added.Entries)
+                combined.AddEntry(entry);
+
+            return combined;
         }
 
         private static void AddLine(List<Entry> entries, List<UserAgentEntry> userAgentsGroup, ref bool addedEntriesToUserAgent, Uri baseUri, string line)

@@ -82,6 +82,39 @@ namespace Robots
         /// <param name="cancellationToken">Cancels the read.</param>
         Task LoadAsync(TextReader reader, Uri baseUri, CancellationToken cancellationToken = default(CancellationToken));
 
+        /// <summary>
+        /// Adds the rules in a robots.txt string to the rules already loaded. Relative paths resolve
+        /// against <see cref="BaseUri"/>, which stays unchanged.
+        /// </summary>
+        /// <param name="fileContent">String containing the robots.txt rules to add. May not be null.</param>
+        void AddContent(string fileContent);
+
+        /// <summary>
+        /// Adds the rules in a robots.txt stream to the rules already loaded.
+        /// </summary>
+        /// <param name="stream">The input stream. May not be null.</param>
+        void Add(Stream stream);
+
+        /// <summary>
+        /// Adds the rules in a robots.txt stream to the rules already loaded.
+        /// </summary>
+        /// <param name="stream">The input stream. May not be null.</param>
+        /// <param name="cancellationToken">Cancels the read.</param>
+        Task AddAsync(Stream stream, CancellationToken cancellationToken = default(CancellationToken));
+
+        /// <summary>
+        /// Adds the rules from a TextReader to the rules already loaded.
+        /// </summary>
+        /// <param name="reader">The TextReader with the robots.txt rules to add. May not be null.</param>
+        void Add(TextReader reader);
+
+        /// <summary>
+        /// Adds the rules from a TextReader to the rules already loaded.
+        /// </summary>
+        /// <param name="reader">The TextReader with the robots.txt rules to add. May not be null.</param>
+        /// <param name="cancellationToken">Cancels the read.</param>
+        Task AddAsync(TextReader reader, CancellationToken cancellationToken = default(CancellationToken));
+
         bool Allowed(string url);
         bool Allowed(string url, string userAgent);
         bool Allowed(Uri uri);
