@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>netstandard2.0;net10.0</TargetFrameworks>
+    <TargetFrameworks Condition=" '$(OS)' == 'Windows_NT' ">$(TargetFrameworks);net462</TargetFrameworks>
+    <NoWarn>$(NoWarn);SYSLIB0014</NoWarn>
+    <RootNamespace>Robots</RootNamespace>
+    <AssemblyName>Robots</AssemblyName>
+    <!-- AssemblyInfo.cs is kept as the source of the assembly attributes. -->
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+
+    <PackageId>NRobotsCore</PackageId>
+    <VersionPrefix>1.1.3</VersionPrefix>
+    <Authors>Steven Jones;Kemy</Authors>
+    <Copyright>Copyright 2013</Copyright>
+    <Description>.NET Core port of sjdirect/nrobots. A robots.txt parser written in c#. This is an unofficial fork of NRobots.txt on codeplex with extended functionality. For full documentation see https://nrobots.codeplex.com/.</Description>
+    <PackageTags>utilities;common</PackageTags>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/Kemyke/nrobots-dotnet-core</PackageProjectUrl>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+  </PropertyGroup>
+
+</Project>

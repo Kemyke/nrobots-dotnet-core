@@ -331,7 +331,7 @@ Disallow: /?category=another&color=red
 Disallow: /?
 Disallow: /disallowfolder/?private
 Allow: /?public/public"
-                ,BaseUrl
+                ,BASE_URL
             );
 
             Assert.IsFalse(robots.Allowed("/?blablabla"));

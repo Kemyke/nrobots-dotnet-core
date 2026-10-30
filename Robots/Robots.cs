@@ -41,11 +41,7 @@ namespace Robots
             var uriBuilder = new UriBuilder(robotsUri) { Path = "/robots.txt" };
             var req = (System.Net.HttpWebRequest)System.Net.WebRequest.Create(uriBuilder.Uri);
 
-#if COREFX
-             using (var webresponse = req.GetResponseAsync().Result)
-#else
-              using (var webresponse = req.GetResponse())
-#endif
+            using (var webresponse = req.GetResponse())
             using (var responseStream = webresponse.GetResponseStream())
             {
                 string baseUrl = string.Concat(webresponse.ResponseUri.Scheme, "://", webresponse.ResponseUri.Host);

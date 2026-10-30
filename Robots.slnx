@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="appveyor.yml" />
+    <File Path="global.json" />
+    <File Path="README.md" />
+  </Folder>
+  <Project Path="Robots/Robots.csproj" />
+  <Project Path="RobotsTests/RobotsTests.csproj" />
+</Solution>

@@ -1,0 +1,15 @@
+<Project Sdk="MSTest.Sdk/4.5.2">
+
+  <PropertyGroup>
+    <TargetFrameworks>net10.0</TargetFrameworks>
+    <TargetFrameworks Condition=" '$(OS)' == 'Windows_NT' ">$(TargetFrameworks);net462</TargetFrameworks>
+    <RootNamespace>RobotsTests</RootNamespace>
+    <!-- AssemblyInfo.cs is kept as the source of the assembly attributes. -->
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Robots\Robots.csproj" />
+  </ItemGroup>
+
+</Project>

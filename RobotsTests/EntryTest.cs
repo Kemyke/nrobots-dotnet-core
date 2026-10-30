@@ -175,7 +175,7 @@ namespace RobotsTests
         [TestMethod]
         public void TryParse_null_base_uri_Test()
         {
-            Assert.ThrowsException<ArgumentNullException>(() =>
+            Assert.ThrowsExactly<ArgumentNullException>(() =>
             {
                 Entry entry;
                 Entry.TryParse(null, "", out entry);
