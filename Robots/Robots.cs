@@ -19,20 +19,35 @@ namespace Robots
 
         private readonly HttpClient _httpClient;
 
+        private string _userAgent;
+
         // Shared so repeated loads reuse connections instead of exhausting sockets.
         private static readonly HttpClient DefaultHttpClient = CreateDefaultHttpClient();
+
+        private static readonly string DefaultUserAgent = "NRobotsCore/" + typeof(Robots).Assembly.GetName().Version.ToString(3);
+
+        // RFC 9309 2.5: crawlers must parse at least 500 KiB of a robots.txt and may ignore the rest.
+        private const int MaxDownloadBytes = 500 * 1024;
+
+        private const string DisallowAllContent = "User-agent: *\nDisallow: /";
 
         #endregion
 
         #region Constructors
 
+        /// <summary>
+        /// Creates a Robots that loads web resources through a shared HttpClient, sending
+        /// <see cref="UserAgent"/> "NRobotsCore/{version}" unless you set another.
+        /// </summary>
         public Robots()
             : this(DefaultHttpClient)
         {
+            _userAgent = DefaultUserAgent;
         }
 
         /// <summary>
-        /// Creates a Robots that loads web resources through the given HttpClient.
+        /// Creates a Robots that loads web resources through the given HttpClient. The client's own
+        /// DefaultRequestHeaders, including its User-Agent, are used unless you set <see cref="UserAgent"/>.
         /// </summary>
         /// <param name="httpClient">The client used by Load(Uri) and LoadAsync. May not be null.</param>
         public Robots(HttpClient httpClient)
@@ -73,6 +88,36 @@ namespace Robots
                     updated = new State(value, current.Entries);
                 }
                 while (Interlocked.CompareExchange(ref _state, updated, current) != current);
+            }
+        }
+
+        /// <summary>
+        /// The User-Agent header sent when loading robots.txt from a Url, for example
+        /// "MyCrawler/1.0 (+https://example.com/crawler)". Defaults to "NRobotsCore/{version}" when the
+        /// built-in HttpClient is used, and to null when you pass your own HttpClient, whose
+        /// DefaultRequestHeaders then apply. Null sends no User-Agent from this class.
+        /// </summary>
+        /// <remarks>
+        /// This only sets the HTTP header. To check rules for your crawler, pass its name to Allowed.
+        /// </remarks>
+        /// <exception cref="ArgumentException">The value is not a valid User-Agent header.</exception>
+        public string UserAgent
+        {
+            get { return Volatile.Read(ref _userAgent); }
+            set
+            {
+                if (value != null && !IsValidUserAgent(value))
+                    throw new ArgumentException("Not a valid User-Agent header value.", "value");
+
+                Volatile.Write(ref _userAgent, value);
+            }
+        }
+
+        private static bool IsValidUserAgent(string value)
+        {
+            using (var request = new HttpRequestMessage())
+            {
+                return request.Headers.UserAgent.TryParseAdd(value);
             }
         }
         #endregion
@@ -187,7 +232,7 @@ namespace Robots
                 throw new ArgumentNullException("reader");
 
             // Completes synchronously on every target: the sync path only calls TextReader.ReadLine.
-            LoadCoreAsync(reader, baseUri, false, CancellationToken.None).GetAwaiter().GetResult();
+            LoadCoreAsync(reader, baseUri, false, CancellationToken.None, null).GetAwaiter().GetResult();
         }
 
         /// <summary>
@@ -201,7 +246,7 @@ namespace Robots
             if (reader == null)
                 throw new ArgumentNullException("reader");
 
-            return LoadCoreAsync(reader, baseUri, true, cancellationToken);
+            return LoadCoreAsync(reader, baseUri, true, cancellationToken, null);
         }
 
         private static Uri ParseBaseUrl(string baseUrl)
@@ -219,28 +264,57 @@ namespace Robots
 
             // ResponseHeadersRead streams the body instead of buffering it, so it is read line by line below.
             using (var request = new HttpRequestMessage(HttpMethod.Get, uriBuilder.Uri))
-#if NET5_0_OR_GREATER
-            using (var response = isAsync
-                ? await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false)
-                : _httpClient.Send(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken))
-#else
-            using (var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false))
-#endif
             {
-                response.EnsureSuccessStatusCode();
+                // Read once: another thread may change the property during the load.
+                var userAgent = Volatile.Read(ref _userAgent);
+                if (userAgent != null)
+                    request.Headers.UserAgent.ParseAdd(userAgent);
 
 #if NET5_0_OR_GREATER
-                using (var responseStream = isAsync
-                    ? await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false)
-                    : response.Content.ReadAsStream(cancellationToken))
+                using (var response = isAsync
+                    ? await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false)
+                    : _httpClient.Send(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken))
 #else
-                using (var responseStream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
+                using (var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false))
 #endif
                 {
                     // RequestUri is the final address after any redirects.
-                    var finalUri = response.RequestMessage.RequestUri;
+                    var finalUri = (response.RequestMessage ?? request).RequestUri;
                     var baseUri = ParseBaseUrl(string.Concat(finalUri.Scheme, "://", finalUri.Host));
-                    await LoadCoreAsync(responseStream, baseUri, isAsync, cancellationToken).ConfigureAwait(false);
+
+                    // RFC 9309 2.3.1.3: a 4xx means there is no robots.txt, so everything is allowed.
+                    int status = (int)response.StatusCode;
+                    if (status >= 400 && status < 500)
+                    {
+                        Volatile.Write(ref _state, new State(baseUri, new List<Entry>()));
+                        return;
+                    }
+
+                    // RFC 9309 2.3.1.4: a 5xx means the rules are unknown, so everything is disallowed.
+                    if (status >= 500)
+                    {
+                        using (var reader = new StringReader(DisallowAllContent))
+                        {
+                            await LoadCoreAsync(reader, baseUri, false, cancellationToken, null).ConfigureAwait(false);
+                        }
+                        return;
+                    }
+
+                    // Anything else that isn't a success, such as a redirect the client didn't follow.
+                    response.EnsureSuccessStatusCode();
+
+#if NET5_0_OR_GREATER
+                    using (var responseStream = isAsync
+                        ? await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false)
+                        : response.Content.ReadAsStream(cancellationToken))
+#else
+                    using (var responseStream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
+#endif
+                    {
+                        // RFC 9309 2.5: parse at most MaxDownloadBytes, so a huge or endless response can't exhaust memory.
+                        var limitedStream = new LengthLimitedStream(responseStream, MaxDownloadBytes);
+                        await LoadCoreAsync(limitedStream, baseUri, isAsync, cancellationToken).ConfigureAwait(false);
+                    }
                 }
             }
         }
@@ -250,17 +324,21 @@ namespace Robots
             // leaveOpen: the caller owns the stream, so disposing the reader must not close it.
             using (var reader = new StreamReader(stream, Encoding.UTF8, true, 1024, true))
             {
-                await LoadCoreAsync(reader, baseUri, isAsync, cancellationToken).ConfigureAwait(false);
+                await LoadCoreAsync(reader, baseUri, isAsync, cancellationToken, stream as LengthLimitedStream).ConfigureAwait(false);
             }
         }
 
-        private async Task LoadCoreAsync(TextReader reader, Uri baseUri, bool isAsync, CancellationToken cancellationToken)
+        private async Task LoadCoreAsync(TextReader reader, Uri baseUri, bool isAsync, CancellationToken cancellationToken, LengthLimitedStream limitedStream)
         {
             // Parse into a local list and publish it only once the whole file has been read: readers keep
             // seeing the previous load until then, and a failed or cancelled load leaves it unchanged.
             List<Entry> entries = new List<Entry>();
             List<UserAgentEntry> userAgentsGroup = new List<UserAgentEntry>();
             bool addedEntriesToUserAgent = false;
+
+            // Each line is parsed only once the next one has been read, so the last line can be
+            // dropped when the size limit cut it off part-way.
+            string pendingLine = null;
             do
             {
                 string line;
@@ -279,59 +357,66 @@ namespace Robots
                 }
 
                 if (line == null)
+                {
+                    if (pendingLine != null && (limitedStream == null || !limitedStream.LimitReached))
+                        AddLine(entries, userAgentsGroup, ref addedEntriesToUserAgent, baseUri, pendingLine);
                     break;
+                }
 
-                if (string.IsNullOrEmpty(line))
-                    continue;
-
-                Entry entry;
-                if (!Entry.TryParse(baseUri, line, out entry))
-                    continue;
-
-                if (entry.Type == EntryType.UserAgent)
-                {
-                    UserAgentEntry userAgentEntry = (UserAgentEntry)entry;
-                    if (addedEntriesToUserAgent)
-                    {
-                        userAgentsGroup.Clear();
-                        addedEntriesToUserAgent = false;
-                    }
-                    
-                    UserAgentEntry foundUserAgentEntry = FindExplicitUserAgentEntry(entries, userAgentEntry.UserAgent);
-                    if (foundUserAgentEntry == null)
-                    {
-                        entries.Add(userAgentEntry);
-                        userAgentsGroup.Add(userAgentEntry);
-                    }
-                    else
-                    {
-                        userAgentsGroup.Add(foundUserAgentEntry);
-                    }
-                }
-                else if (entry.Type == EntryType.Comment)
-                {
-                    entries.Add(entry);
-                }
-                else if (entry.Type == EntryType.Sitemap)
-                {
-                    entries.Add(entry);
-                }
-                else if (userAgentsGroup.Count > 0)
-                {
-                    foreach (UserAgentEntry userAgent in userAgentsGroup)
-                    {
-                        userAgent.AddEntry(entry);
-                    }
-                    addedEntriesToUserAgent = true;
-                }
-                else
-                {
-                    continue;
-                }
+                if (pendingLine != null)
+                    AddLine(entries, userAgentsGroup, ref addedEntriesToUserAgent, baseUri, pendingLine);
+                pendingLine = line;
             } while (true);
 
             // Replaces the previous load instead of adding to it.
             Volatile.Write(ref _state, new State(baseUri, entries));
+        }
+
+        private static void AddLine(List<Entry> entries, List<UserAgentEntry> userAgentsGroup, ref bool addedEntriesToUserAgent, Uri baseUri, string line)
+        {
+            if (string.IsNullOrEmpty(line))
+                return;
+
+            Entry entry;
+            if (!Entry.TryParse(baseUri, line, out entry))
+                return;
+
+            if (entry.Type == EntryType.UserAgent)
+            {
+                UserAgentEntry userAgentEntry = (UserAgentEntry)entry;
+                if (addedEntriesToUserAgent)
+                {
+                    userAgentsGroup.Clear();
+                    addedEntriesToUserAgent = false;
+                }
+
+                UserAgentEntry foundUserAgentEntry = FindExplicitUserAgentEntry(entries, userAgentEntry.UserAgent);
+                if (foundUserAgentEntry == null)
+                {
+                    entries.Add(userAgentEntry);
+                    userAgentsGroup.Add(userAgentEntry);
+                }
+                else
+                {
+                    userAgentsGroup.Add(foundUserAgentEntry);
+                }
+            }
+            else if (entry.Type == EntryType.Comment)
+            {
+                entries.Add(entry);
+            }
+            else if (entry.Type == EntryType.Sitemap)
+            {
+                entries.Add(entry);
+            }
+            else if (userAgentsGroup.Count > 0)
+            {
+                foreach (UserAgentEntry userAgent in userAgentsGroup)
+                {
+                    userAgent.AddEntry(entry);
+                }
+                addedEntriesToUserAgent = true;
+            }
         }
 
 #endregion

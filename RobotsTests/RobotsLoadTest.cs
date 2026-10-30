@@ -78,9 +78,9 @@ namespace RobotsTests
         }
 
         [TestMethod]
-        public void Load_throws_on_a_non_success_status()
+        public void Load_throws_on_a_redirect_the_client_did_not_follow()
         {
-            var handler = new FakeHttpMessageHandler(request => new HttpResponseMessage(HttpStatusCode.NotFound) { RequestMessage = request });
+            var handler = FakeHttpMessageHandler.Returning(HttpStatusCode.Redirect);
             using (var client = new HttpClient(handler))
             {
                 var robots = new Robots.Robots(client);
@@ -90,9 +90,9 @@ namespace RobotsTests
         }
 
         [TestMethod]
-        public async Task LoadAsync_throws_on_a_non_success_status()
+        public async Task LoadAsync_throws_on_a_redirect_the_client_did_not_follow()
         {
-            var handler = new FakeHttpMessageHandler(request => new HttpResponseMessage(HttpStatusCode.NotFound) { RequestMessage = request });
+            var handler = FakeHttpMessageHandler.Returning(HttpStatusCode.Redirect);
             using (var client = new HttpClient(handler))
             {
                 var robots = new Robots.Robots(client);

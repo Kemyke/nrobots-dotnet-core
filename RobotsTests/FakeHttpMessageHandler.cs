@@ -22,6 +22,11 @@ namespace RobotsTests
 
         public List<Uri> RequestedUris { get; } = new List<Uri>();
 
+        /// <summary>
+        /// The User-Agent header of each request, empty when none was sent.
+        /// </summary>
+        public List<string> UserAgents { get; } = new List<string>();
+
         public int AsyncSends { get; private set; }
 
         public int SyncSends { get; private set; }
@@ -37,6 +42,14 @@ namespace RobotsTests
                 Content = new StringContent(content, Encoding.UTF8, "text/plain"),
                 RequestMessage = new HttpRequestMessage(request.Method, finalUri ?? request.RequestUri)
             });
+        }
+
+        /// <summary>
+        /// Returns an empty response with <paramref name="status"/> for every request.
+        /// </summary>
+        public static FakeHttpMessageHandler Returning(HttpStatusCode status)
+        {
+            return new FakeHttpMessageHandler(request => new HttpResponseMessage(status) { RequestMessage = request });
         }
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -58,6 +71,7 @@ namespace RobotsTests
             // Real handlers stop on a cancelled token; HttpClient leaves that check to them.
             cancellationToken.ThrowIfCancellationRequested();
             RequestedUris.Add(request.RequestUri);
+            UserAgents.Add(request.Headers.UserAgent.ToString());
             return _respond(request);
         }
     }

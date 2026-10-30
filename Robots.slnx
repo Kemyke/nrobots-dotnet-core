@@ -3,6 +3,7 @@
     <File Path="appveyor.yml" />
     <File Path="Directory.Build.props" />
     <File Path="global.json" />
+    <File Path="MIGRATION.md" />
     <File Path="README.md" />
   </Folder>
   <Project Path="Robots/Robots.csproj" />
