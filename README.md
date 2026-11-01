@@ -22,9 +22,12 @@ This project provides an easy-to-use class, implemented in C#, to work with robo
 * Disallow entries
 * Allow entries
 * Sitemap entries
-* Crawl-delay entries
+* Crawl-delay entries, fractions included (`1.5`)
 * Supports comments
 * Supports wild cards (both * and $)
+* Reports skipped lines (`ParseErrors`) instead of dropping them silently; bad content never throws
+* Read-only access to the parsed groups and rules (`Groups`, `GetGroup`)
+* One consistent `Snapshot` of a load, also while another thread reloads
 
 ## Supported frameworks:
 * .NET 10 (`net10.0`)
@@ -53,6 +56,15 @@ robots.txt content you already have can be loaded from a string, `Stream` or `Te
 ```csharp
 robots.LoadContent("User-agent: *\nDisallow: /private", "https://www.example.com");
 await robots.LoadAsync(stream, "https://www.example.com", cancellationToken);
+
+// Or create and load in one step
+var parsed = Robots.Robots.Parse("User-agent: *\nDisallow: /private", "https://www.example.com");
+```
+
+A stream is read as UTF-8 unless you pass an encoding; a byte order mark in the stream takes precedence:
+
+```csharp
+await robots.LoadAsync(stream, "https://www.example.com", Encoding.GetEncoding("iso-8859-1"), cancellationToken);
 ```
 
 Each load replaces the rules loaded before. To add rules to them instead, for example your own rules on top of a site's robots.txt, use `AddContent`, `Add` or `AddAsync`:
@@ -63,6 +75,64 @@ robots.AddContent("User-agent: *\nDisallow: /search");
 ```
 
 Each `LoadAsync` overload has a synchronous `Load` counterpart. Prefer `LoadAsync` for Urls: on .NET Framework and .NET Standard, `Load(Uri)` blocks a thread until the download completes.
+
+### Crawl-delay:
+`Crawl-delay` is a number of seconds, fractions included. `TryGetCrawlDelay` gives the exact value; `GetCrawlDelay` gives whole seconds, rounded up so a crawler never waits less than the site asked:
+
+```csharp
+if (robots.TryGetCrawlDelay("ExampleBot", out TimeSpan delay))
+{
+    // "Crawl-delay: 1.5" gives exactly 1.5 seconds
+}
+
+int seconds = robots.GetCrawlDelay("ExampleBot"); // 2 for "Crawl-delay: 1.5"; 0 when none applies
+```
+
+Values are read the same way on every machine (`1.5`, `0.1`, `1e3`). Negative values, `NaN`, `1,5`, an empty value and anything a `TimeSpan` can't hold are ignored and reported in `ParseErrors`. The first valid `Crawl-delay` of a group wins.
+
+### Parse errors:
+Parsing never throws on bad content. Each line it skips is listed in `ParseErrors`, with its 1-based line number, the line as read and the reason:
+
+```csharp
+var robots = Robots.Robots.Parse("User-agent: *\nHost: example.com\nthis line has no colon", "https://www.example.com");
+
+foreach (RobotsParseError error in robots.ParseErrors)
+{
+    Console.WriteLine(error); // Line 2 (UnknownDirective): Host: example.com
+}
+```
+
+| `RobotsParseErrorKind` | The line |
+|---|---|
+| `MalformedLine` | has content but no `:` |
+| `UnknownDirective` | isn't `User-agent`, `Allow`, `Disallow`, `Crawl-delay` or `Sitemap` |
+| `InvalidCrawlDelay` | has a `Crawl-delay` that isn't a valid number of seconds |
+| `RuleOutsideGroup` | is an `Allow`, `Disallow` or `Crawl-delay` before the first `User-agent` line, which RFC 9309 ignores |
+| `EmptyUserAgent` | is a `User-agent` line without a value |
+| `LineCutOff` | is the last line of a download, cut off by the 500 KiB limit |
+
+Line numbers count from the start of the text each `Load` or `Add` call read. A load replaces the list; an add appends its errors.
+
+### Groups:
+`Groups` lists the groups as written, in file order. `GetGroup` returns the group that applies to a crawler: every group for its product token combined, or the `*` groups, exactly the rules `Allowed` uses. It returns `null` when no group applies.
+
+```csharp
+foreach (RobotsGroup group in robots.Groups)
+{
+    Console.WriteLine(group); // User-agent: ExampleBot, OtherBot
+}
+
+RobotsGroup? applies = robots.GetGroup("ExampleBot/2.1");
+if (applies != null)
+{
+    foreach (RobotsRule rule in applies.Rules)
+    {
+        Console.WriteLine(rule); // Disallow: /private/
+    }
+}
+```
+
+Groups and rules are immutable. `RobotsGroup.IsAllowed` and `RobotsRule.Matches` check a path and query against them with the same RFC 9309 rules as `Allowed`.
 
 ### Matching (RFC 9309):
 `Allowed` follows [RFC 9309](https://www.rfc-editor.org/rfc/rfc9309.html):
@@ -113,6 +183,14 @@ var robotsWithTimeout = new Robots.Robots(new HttpClient { Timeout = TimeSpan.Fr
 ## Thread safety:
 A `Robots` instance can be queried from several threads at once, also while rules are being loaded or added. A load replaces the rules and an add extends them, each in one step once the whole file has been read, so a query sees either the rules from before or after, never a mix. A load or add that fails or is cancelled keeps the rules from before.
 
+Each member of `Robots` reads the current load. When several answers must come from the same load while another thread may reload, read `Snapshot` once and ask it: it has `BaseUri`, `Groups`, `Sitemaps`, `ParseErrors`, `Allowed`, `GetGroup` and the crawl-delay methods, and never changes.
+
+```csharp
+RobotsSnapshot snapshot = robots.Snapshot;
+bool allowed = snapshot.Allowed("/page.html", "ExampleBot");
+IReadOnlyList<RobotsParseError> errors = snapshot.ParseErrors; // from the same load
+```
+
 Build with `RobotsBuilder` on one thread; share the result once it is built.
 
 ## What's new in 2.0.0:
@@ -122,17 +200,24 @@ Build with `RobotsBuilder` on one thread; share the result once it is built.
 * `AddContent`, `Add` and `AddAsync` add rules to the loaded ones.
 * Matching follows RFC 9309: longest match, `*` and `$`, case-sensitive paths, product tokens.
 * Downloads follow RFC 9309 for status codes and size, and send a configurable `User-Agent`.
+* Fractional `Crawl-delay` (`1.5`), with `TryGetCrawlDelay` for the exact `TimeSpan`; `GetCrawlDelay` rounds up to whole seconds.
+* `ParseErrors` lists every skipped line with its line number and reason.
+* `Groups` and `GetGroup` give read-only access to the parsed groups and rules (`RobotsGroup`, `RobotsRule`).
+* `Snapshot` gives one consistent view of a load (`RobotsSnapshot`).
+* `Sitemaps`, `Robots.Parse`, and `Encoding` overloads for loading streams.
 * Safe to query from several threads, also while loading or adding rules.
 * Annotated for nullable reference types, and marked trimmable and AOT-compatible on .NET 10.
 
 Breaking changes:
-* `IRobots` has new `LoadAsync` and `Add` members, so your own `IRobots` implementations must add them. Code that only calls `Robots` or `IRobots` needs no changes.
+* `IRobots` has new members (`LoadAsync`, `Add`, `Snapshot`, `Groups`, `Sitemaps`, `ParseErrors`, `GetGroup`, `TryGetCrawlDelay` and `Encoding` overloads), so your own `IRobots` implementations must add them. Code that only calls `Robots` or `IRobots` needs no changes.
 * Matching follows RFC 9309, so some Urls get a different answer than in 1.x: paths are case-sensitive, the longest rule wins, `Disallow: /folder/` no longer covers `/folder`, and `*` and `$` follow the standard.
 * A failed download throws `HttpRequestException` instead of `WebException`.
 * A 4xx response allows everything and a 5xx response disallows everything, where 1.x threw `WebException`.
 * Loading into an instance that already holds rules replaces them; 1.x added the new rules to the old ones. Use `AddContent`, `Add` or `AddAsync` for the 1.x behaviour.
 * Nullable annotations: `BaseUri`, `UserAgent` and some model properties are nullable, and a few misuses throw `InvalidOperationException` instead of `NullReferenceException` or `ArgumentNullException`.
 * `UserAgents` and `BrowserUserAgents` are static classes; their constants are unchanged.
+* `GetCrawlDelay` rounds a fractional delay up (`1.5` gives 2, where 1.x gave 0), and an invalid `Crawl-delay` no longer counts as 0.
+* An empty `Disallow:` ends a group's `User-agent` lines, as RFC 9309 says, so a following `User-agent` starts a new group instead of joining it.
 
 The [migration guide](MIGRATION.md) explains each change with examples.
 

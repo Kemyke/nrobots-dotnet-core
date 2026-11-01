@@ -1,17 +1,10 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
-using System.Globalization;
 
 namespace Robots.Model
 {
     public abstract class Entry
     {
-        private const string USER_AGENT_KEYWORD = "user-agent";
-        private const string DISALLOW_KEYWORD = "disallow";
-        private const string ALLOW_KEYWORD = "allow";
-        private const string CRAWL_DELAY_KEYWORD = "crawl-delay";
-        private const string SITEMAP_KEYWORD = "sitemap";
-
         protected Entry(EntryType type)
         {
             Type = type;
@@ -44,6 +37,10 @@ namespace Robots.Model
             throw new InvalidOperationException();
         }
 
+        /// <summary>
+        /// Parses one robots.txt line. Returns false for lines that hold no entry: blank lines, malformed or unknown
+        /// lines, an empty User-agent, Allow or Disallow, and an invalid Crawl-delay.
+        /// </summary>
         public static bool TryParse(Uri baseUri, string entryText, [NotNullWhen(true)] out Entry? entry)
         {
             if (baseUri == null)
@@ -54,80 +51,37 @@ namespace Robots.Model
             if (string.IsNullOrEmpty(entryText))
                 return false;
 
-            // RFC 9309, section 2.2.3: '#' starts a comment anywhere on the line.
-            string comment = string.Empty;
-            int commentPosition = RobotsPattern.IndexOfOrdinal(entryText, '#');
-            if (commentPosition >= 0)
+            var line = RobotsLine.Parse(entryText);
+            switch (line.Kind)
             {
-                comment = entryText.Substring(commentPosition + 1);
-                entryText = entryText.Substring(0, commentPosition);
-            }
+                case RobotsLineKind.Comment:
+                    entry = new CommentEntry { Comment = line.Comment };
+                    return true;
 
-            // A UTF-8 byte order mark that reached the text, for example through LoadContent, is skipped.
-            entryText = entryText.TrimStart('﻿').Trim();
-            if (entryText.Length == 0)
-            {
-                if (commentPosition < 0)
+                case RobotsLineKind.UserAgent:
+                    entry = new UserAgentEntry { UserAgent = line.Value, Comment = line.Comment };
+                    return true;
+
+                case RobotsLineKind.Disallow:
+                case RobotsLineKind.Allow:
+                    // An empty Allow or Disallow matches nothing, so there is no rule to return.
+                    if (line.Value.Length == 0)
+                        return false;
+
+                    entry = CreateRule(line.Kind == RobotsLineKind.Allow ? new AllowEntry() : (UrlEntry)new DisallowEntry(), baseUri, line.Value, line.Comment);
+                    return true;
+
+                case RobotsLineKind.CrawlDelay:
+                    entry = new CrawlDelayEntry { Delay = line.CrawlDelay, Comment = line.Comment };
+                    return true;
+
+                case RobotsLineKind.Sitemap:
+                    entry = new SitemapEntry { SitemapUrl = line.Value, Comment = line.Comment };
+                    return true;
+
+                default:
                     return false;
-
-                entry = CreateEntry(EntryType.Comment);
-                entry.Comment = comment;
-                return true;
             }
-
-            // RFC 9309, section 2.2: <key> *WS ":" *WS <value>, with case-insensitive keys.
-            int separator = RobotsPattern.IndexOfOrdinal(entryText, ':');
-            if (separator < 0)
-                return false;
-
-            string key = entryText.Substring(0, separator).Trim();
-            string value = entryText.Substring(separator + 1).Trim();
-
-            if (string.Equals(key, USER_AGENT_KEYWORD, StringComparison.OrdinalIgnoreCase))
-            {
-                string userAgent = value.TrimEnd('?');
-                if (userAgent.Length == 0)
-                    return false;
-
-                entry = new UserAgentEntry { UserAgent = userAgent, Comment = comment };
-            }
-            else if (string.Equals(key, DISALLOW_KEYWORD, StringComparison.OrdinalIgnoreCase))
-            {
-                // An empty Disallow disallows nothing.
-                if (value.Length == 0)
-                    return false;
-
-                entry = CreateRule(new DisallowEntry(), baseUri, value, comment);
-            }
-            else if (string.Equals(key, ALLOW_KEYWORD, StringComparison.OrdinalIgnoreCase))
-            {
-                // An empty Allow allows nothing beyond what is already allowed.
-                if (value.Length == 0)
-                    return false;
-
-                entry = CreateRule(new AllowEntry(), baseUri, value, comment);
-            }
-            else if (string.Equals(key, CRAWL_DELAY_KEYWORD, StringComparison.OrdinalIgnoreCase))
-            {
-                int crawlDelay;
-                entry = new CrawlDelayEntry
-                {
-                    Comment = comment,
-                    CrawlDelay = int.TryParse(value.TrimEnd('?'), NumberStyles.Integer, CultureInfo.InvariantCulture, out crawlDelay)
-                        ? crawlDelay
-                        : 0
-                };
-            }
-            else if (string.Equals(key, SITEMAP_KEYWORD, StringComparison.OrdinalIgnoreCase))
-            {
-                entry = new SitemapEntry { Comment = comment, SitemapUrl = value.TrimEnd('?') };
-            }
-            else
-            {
-                return false;
-            }
-
-            return true;
         }
 
         [SuppressMessage("Usage", "CA2234:Pass system uri objects instead of strings",
@@ -139,15 +93,8 @@ namespace Robots.Model
 
             rule.Comment = comment;
             rule.Url = url;
-            rule.Inverted = EndsWithDollar(value);
-            // Matching uses the pattern as written: Url would resolve "..", and '*' and '$' have no meaning in it.
-            rule.PathPattern = RobotsPattern.NormalizePattern(value);
+            rule.Inverted = value.Length > 0 && value[value.Length - 1] == '$';
             return rule;
-        }
-
-        private static bool EndsWithDollar(string text)
-        {
-            return text.Length > 0 && text[text.Length - 1] == '$';
         }
     }
 }

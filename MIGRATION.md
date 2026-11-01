@@ -8,7 +8,8 @@ NRobotsCore 2.0 keeps every 1.x method signature, so most code keeps compiling u
 |---|---|
 | Targets .NET Framework 4.0–4.6.1 or .NET Standard 1.x | [Move to a supported framework](#supported-frameworks) |
 | Depends on which Urls `Allowed` allows | [Check the RFC 9309 matching changes](#matching-follows-rfc-9309) |
-| Implements `IRobots` itself (including test fakes) | [Add the `LoadAsync` and `Add` members](#irobots-has-new-members) |
+| Implements `IRobots` itself (including test fakes) | [Add the new members](#irobots-has-new-members) |
+| Reads `GetCrawlDelay` or `CrawlDelayEntry` | [Check the crawl-delay changes](#crawl-delay) |
 | Catches `WebException` around `Load(Uri)` | [Catch `HttpRequestException` instead](#exceptions) |
 | Treats a 404 or 5xx error from `Load(Uri)` as "no rules" or retries on it | [Check the new status handling](#http-status-codes-rfc-9309) |
 | Calls `Load` more than once on the same instance to combine files | [Use `AddContent` for the extra files](#adding-rules-to-the-loaded-ones) |
@@ -36,7 +37,7 @@ On .NET 10 the library is marked trimmable and AOT-compatible, so it can be used
 
 ## IRobots has new members
 
-`IRobots` gained four `LoadAsync` methods and five methods that [add rules to the loaded ones](#adding-rules-to-the-loaded-ones):
+`IRobots` gained `LoadAsync` methods, methods that [add rules to the loaded ones](#adding-rules-to-the-loaded-ones), `Encoding` overloads for streams, and read-only access to what was parsed:
 
 ```csharp
 Task LoadAsync(Uri robotsUri, CancellationToken cancellationToken = default(CancellationToken));
@@ -49,14 +50,46 @@ void Add(Stream stream);
 Task AddAsync(Stream stream, CancellationToken cancellationToken = default(CancellationToken));
 void Add(TextReader reader);
 Task AddAsync(TextReader reader, CancellationToken cancellationToken = default(CancellationToken));
+
+void Load(Stream stream, string baseUrl, Encoding? encoding);
+void Load(Stream stream, Uri baseUri, Encoding? encoding);
+Task LoadAsync(Stream stream, string baseUrl, Encoding? encoding, CancellationToken cancellationToken = default(CancellationToken));
+Task LoadAsync(Stream stream, Uri baseUri, Encoding? encoding, CancellationToken cancellationToken = default(CancellationToken));
+void Add(Stream stream, Encoding? encoding);
+Task AddAsync(Stream stream, Encoding? encoding, CancellationToken cancellationToken = default(CancellationToken));
+
+RobotsSnapshot Snapshot { get; }
+IReadOnlyList<RobotsGroup> Groups { get; }
+IReadOnlyList<string> Sitemaps { get; }
+IReadOnlyList<RobotsParseError> ParseErrors { get; }
+RobotsGroup? GetGroup(string userAgent);
+bool TryGetCrawlDelay(out TimeSpan crawlDelay);
+bool TryGetCrawlDelay(string userAgent, out TimeSpan crawlDelay);
 ```
 
-Code that only *calls* `IRobots` is unaffected. A class that *implements* it, such as a test fake, must add them:
+Code that only *calls* `IRobots` is unaffected. A class that *implements* it, such as a test fake, must add them. `RobotsSnapshot`, `RobotsGroup` and `RobotsParseError` lists come from a real `Robots`, so a fake can keep one for the members it doesn't fake:
 
 ```csharp
 public class FakeRobots : IRobots
 {
+    private readonly Robots.Robots _real = new Robots.Robots();
+
     // ... the 1.x members as before; with nullable enabled, declare BaseUri as Uri? ...
+
+    public RobotsSnapshot Snapshot => _real.Snapshot;
+    public IReadOnlyList<RobotsGroup> Groups => _real.Groups;
+    public IReadOnlyList<string> Sitemaps => _real.Sitemaps;
+    public IReadOnlyList<RobotsParseError> ParseErrors => _real.ParseErrors;
+    public RobotsGroup? GetGroup(string userAgent) => _real.GetGroup(userAgent);
+    public bool TryGetCrawlDelay(out TimeSpan crawlDelay) => _real.TryGetCrawlDelay(out crawlDelay);
+    public bool TryGetCrawlDelay(string userAgent, out TimeSpan crawlDelay) => _real.TryGetCrawlDelay(userAgent, out crawlDelay);
+
+    public void Load(Stream stream, string baseUrl, Encoding? encoding) => Load(stream, baseUrl);
+    public void Load(Stream stream, Uri baseUri, Encoding? encoding) => Load(stream, baseUri);
+    public Task LoadAsync(Stream stream, string baseUrl, Encoding? encoding, CancellationToken cancellationToken = default(CancellationToken)) => LoadAsync(stream, baseUrl, cancellationToken);
+    public Task LoadAsync(Stream stream, Uri baseUri, Encoding? encoding, CancellationToken cancellationToken = default(CancellationToken)) => LoadAsync(stream, baseUri, cancellationToken);
+    public void Add(Stream stream, Encoding? encoding) => Add(stream);
+    public Task AddAsync(Stream stream, Encoding? encoding, CancellationToken cancellationToken = default(CancellationToken)) => AddAsync(stream, cancellationToken);
 
     public Task LoadAsync(Uri robotsUri, CancellationToken cancellationToken = default(CancellationToken))
     {
@@ -361,6 +394,33 @@ With your own `HttpClient`, `UserAgent` starts as `null` and the client's `Defau
 bool allowed = robots.Allowed("/page.html", "MyCrawler");
 ```
 
+## Crawl-delay
+
+1.x read `Crawl-delay` as a whole number, so `Crawl-delay: 1.5` became 0 and the site's delay was lost. 2.x reads seconds with fractions, the same way on every machine:
+
+| `Crawl-delay:` | 1.x `GetCrawlDelay` | 2.x `GetCrawlDelay` | 2.x `TryGetCrawlDelay` |
+|---|---|---|---|
+| `5` | 5 | 5 | 5 s |
+| `1.5` | 0 | **2** (rounded up) | 1.5 s |
+| `0.1` | 0 | **1** (rounded up) | 0.1 s |
+| `1e3` | 0 | **1000** | 1000 s |
+| `-1` | -1 | 0, and reported in `ParseErrors` | `false` |
+| `1,5`, `NaN`, empty | 0 | 0, and reported in `ParseErrors` | `false` |
+
+`GetCrawlDelay` rounds up so a crawler never waits less than the site asked. Use `TryGetCrawlDelay` for the exact value:
+
+```csharp
+// 1.x
+int delayInSeconds = robots.GetCrawlDelay("MyCrawler");
+
+// 2.x, exact
+TimeSpan delay = robots.TryGetCrawlDelay("MyCrawler", out var crawlDelay) ? crawlDelay : TimeSpan.Zero;
+```
+
+An invalid `Crawl-delay` no longer counts as 0. In 1.x, `Crawl-delay: soon` followed by `Crawl-delay: 3` gave 0, because the group's first `Crawl-delay` won; in 2.x the invalid line is skipped and the result is 3.
+
+`CrawlDelayEntry` keeps `int CrawlDelay`, now rounded up, and gains `TimeSpan Delay` with the exact value; setting either one sets the other. `Entry.TryParse` returns `false` for an invalid `Crawl-delay`, where 1.x returned an entry with 0.
+
 ## Nullable annotations
 
 2.x is annotated for nullable reference types. If your project has `<Nullable>enable</Nullable>`, the compiler now tells you where a value can be null:
@@ -370,7 +430,7 @@ bool allowed = robots.Allowed("/page.html", "MyCrawler");
 | `Robots.BaseUri`, `IRobots.BaseUri` | `Uri?` | Nothing has been loaded and it hasn't been set |
 | `Robots.UserAgent` | `string?` | You passed your own `HttpClient`, or set it to null |
 | `Entry.Comment` | `string?` | The line had no comment |
-| `UrlEntry.Url` | `Uri?` | Never for parsed rules; only if you create an entry yourself without one |
+| `UrlEntry.Url` | `Uri?` | The rule's path isn't a valid relative URL, or you create an entry yourself without one |
 | `UserAgentEntry.CrawlDelayEntry`, `UserAgentEntry.SitemapEntry` | nullable | The group has no such line |
 | `Entry.TryParse(..., out Entry? entry)` | `[NotNullWhen(true)]` | `entry` is not null when it returns true |
 
@@ -391,10 +451,11 @@ if (baseUri != null && Entry.TryParse(baseUri, line, out var entry))
 * `Crawl-delay` values are parsed the same way on every machine. 1.x used the current culture.
 * Checking a relative Url with `Allowed` on an instance that has rules but no `BaseUri`, for example after setting `BaseUri` to null, throws `InvalidOperationException` with a clear message, instead of `ArgumentNullException`. An instance without rules still allows everything.
 * `RobotsBuilder.Allow` or `Disallow` before `ForUserAgent` throws `InvalidOperationException`, instead of `NullReferenceException`.
-* An `AllowEntry` or `DisallowEntry` you create without a `Url` never matches, instead of throwing `NullReferenceException` from `Allowed`.
+* An empty `Disallow:` (or `Allow:`) ends a group's `User-agent` lines, as RFC 9309 and Google's parser do. In `User-agent: a`, `Disallow:`, `User-agent: b`, `Disallow: /x`, agent `a` is allowed `/x` in 2.x; 1.x let `b` join `a`'s group and disallowed `/x` for both.
+* Lines that can't be used are reported in `ParseErrors` instead of being dropped silently. Parsing still never throws on bad content.
 * `Allowed(Uri, string)` throws `ArgumentNullException` for a null Url or user agent.
 * `UserAgents` and `BrowserUserAgents` are static classes: they only hold constants. `BrowserUserAgents.AllAgents` still works, but the classes can no longer be created or derived from.
 
 ## Thread safety
 
-1.x was not safe to use from several threads while loading: queries during a load could throw `InvalidOperationException` or see half the rules. In 2.x, an instance can be queried from any number of threads, also while rules are being loaded or added; each query sees the rules from either before or after a load or add, never a mix. Build with `RobotsBuilder` on one thread and share the result once it is built.
+1.x was not safe to use from several threads while loading: queries during a load could throw `InvalidOperationException` or see half the rules. In 2.x, an instance can be queried from any number of threads, also while rules are being loaded or added; each query sees the rules from either before or after a load or add, never a mix. When several answers must come from the same load, read `Snapshot` once and query it. Build with `RobotsBuilder` on one thread and share the result once it is built.
