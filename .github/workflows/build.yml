@@ -1,0 +1,60 @@
+# Builds, tests and packs the library on every push and pull request.
+# Runs on standard GitHub-hosted runners, which are free for public repositories, and uploads nothing,
+# so it uses no artifact or cache storage.
+name: Build
+
+on:
+  push:
+    branches: [ master, 'feature/**' ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+# Read-only token: the workflow only checks out and builds.
+permissions:
+  contents: read
+
+# A newer push to the same branch or pull request cancels the run it replaces.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: 1
+
+jobs:
+  build:
+    name: Build and test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # Windows also builds and tests net462; on Linux the projects target netstandard2.0 and net10.0 only.
+        os: [ ubuntu-latest, windows-latest ]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+
+    steps:
+      # Actions are pinned to a full commit SHA, so a moved tag can't change what runs.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Installs the SDK that global.json pins, the same one the local build uses.
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore Robots.slnx
+
+      # Warnings are errors (Directory.Build.props), so analyzer findings fail this step.
+      - name: Build
+        run: dotnet build Robots.slnx --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test --solution Robots.slnx --configuration Release --no-build
+
+      # Checks that the package builds; the package isn't uploaded or published.
+      - name: Pack
+        run: dotnet pack Robots/Robots.csproj --configuration Release --no-build --output ${{ runner.temp }}/packages

@@ -1,0 +1,16 @@
+<Project>
+  <!-- Settings shared by every project that must come after the SDK's own. MSBuild imports this file
+       automatically at the end of each project, after the SDK has defined its items. -->
+
+  <!-- IsAotCompatible makes the SDK reference Microsoft.NET.ILLink.Tasks implicitly, at the version its
+       KnownILLinkPack table lists per target. With more than one .NETCoreApp target that means two versions
+       of one package in one project, which Visual Studio's NuGet Consolidate tab reports. Every target uses
+       the trimmer of the SDK doing the build instead, which also keeps it current without pinning.
+       This lives here rather than in Directory.Build.props: an Update only reaches items defined before it,
+       and the SDK defines KnownILLinkPack after Directory.Build.props is imported.
+       KnownILLinkPack is SDK-internal and undocumented: if an SDK renames or reshapes it, this goes inert or
+       fails the restore - drop it then. -->
+  <ItemGroup>
+    <KnownILLinkPack Update="Microsoft.NET.ILLink.Tasks" ILLinkPackVersion="$(BundledNETCoreAppPackageVersion)" />
+  </ItemGroup>
+</Project>

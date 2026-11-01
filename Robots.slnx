@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path=".github/workflows/build.yml" />
+    <File Path="appveyor.yml" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Build.targets" />
+    <File Path="global.json" />
+    <File Path="MIGRATION.md" />
+    <File Path="README.md" />
+  </Folder>
+  <Project Path="Robots/Robots.csproj" />
+  <Project Path="RobotsTests/RobotsTests.csproj" />
+</Solution>

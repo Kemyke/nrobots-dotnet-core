@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>netstandard2.0;net10.0</TargetFrameworks>
+    <TargetFrameworks Condition=" '$(OS)' == 'Windows_NT' ">$(TargetFrameworks);net462</TargetFrameworks>
+    <RootNamespace>Robots</RootNamespace>
+    <AssemblyName>Robots</AssemblyName>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Packaging">
+    <PackageId>NRobotsCore</PackageId>
+    <Description>A robots.txt parser written in C# that follows RFC 9309, the Robots Exclusion Protocol. .NET port of sjdirect/nrobots, an unofficial fork of NRobots.txt from CodePlex (shut down in 2021) with extended functionality. Documentation is on the project page.</Description>
+    <PackageTags>utilities;common</PackageTags>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/Kemyke/nrobots-dotnet-core</PackageProjectUrl>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+  </PropertyGroup>
+
+  <!-- Marks the package trimmable and AOT-compatible, and runs the trim, AOT and single-file analyzers
+       on every build. Only the .NETCoreApp targets support it; the SDK warns on the others. -->
+  <PropertyGroup Condition=" '$(TargetFramework)' != 'netstandard2.0' And !$(TargetFramework.StartsWith('net4')) ">
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.CLSCompliantAttribute">
+      <_Parameter1>true</_Parameter1>
+      <_Parameter1_IsLiteral>true</_Parameter1_IsLiteral>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup Condition=" '$(TargetFramework)' == 'net462' ">
+    <Reference Include="System.Net.Http" />
+  </ItemGroup>
+
+</Project>

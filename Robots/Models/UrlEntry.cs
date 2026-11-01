@@ -9,7 +9,7 @@ namespace Robots.Model
         { }
 
         public bool Inverted { get; set; }
-        
-        public Uri Url { get; set; }
+
+        public Uri? Url { get; set; }
     }
 }

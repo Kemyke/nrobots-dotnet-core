@@ -1,16 +1,10 @@
-﻿using System;
-using System.Globalization;
+using System;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Robots.Model
 {
     public abstract class Entry
     {
-        private const string USER_AGENT_KEYWORD = "user-agent:";
-        private const string DISALLOW_KEYWORD = "disallow:";
-        private const string ALLOW_KEYWORD = "allow:";
-        private const string CRAWL_DELAY_KEYWORD = "crawl-delay:";
-        private const string SITEMAP_KEYWORD = "sitemap:";
-
         protected Entry(EntryType type)
         {
             Type = type;
@@ -18,7 +12,7 @@ namespace Robots.Model
 
         public EntryType Type { get; private set; }
 
-        public string Comment { get; set; }
+        public string? Comment { get; set; }
 
         public bool HasComment { get { return !string.IsNullOrEmpty(Comment); } }
 
@@ -43,135 +37,64 @@ namespace Robots.Model
             throw new InvalidOperationException();
         }
 
-        public static bool TryParse(Uri baseUri, string entryText, out Entry entry)
+        /// <summary>
+        /// Parses one robots.txt line. Returns false for lines that hold no entry: blank lines, malformed or unknown
+        /// lines, an empty User-agent, Allow or Disallow, and an invalid Crawl-delay.
+        /// </summary>
+        public static bool TryParse(Uri baseUri, string entryText, [NotNullWhen(true)] out Entry? entry)
         {
             if (baseUri == null)
-                throw new ArgumentNullException("baseUri");
-
+                throw new ArgumentNullException(nameof(baseUri));
 
             entry = null;
 
             if (string.IsNullOrEmpty(entryText))
                 return false;
 
-            EntryType type = EntryType.Invalid;
-            string comment = string.Empty;
-
-            int commentPosition = entryText.IndexOf('#');
-            if (commentPosition == 0)
+            var line = RobotsLine.Parse(entryText);
+            switch (line.Kind)
             {
-                type = EntryType.Comment;
-            }
-            if (commentPosition >= 0 && 
-                (commentPosition == 0 || entryText[commentPosition - 1] == ' '))
-            {
-                comment = entryText.Substring(commentPosition + 1);
-                entryText = entryText.Substring(0, commentPosition);
-            }
+                case RobotsLineKind.Comment:
+                    entry = new CommentEntry { Comment = line.Comment };
+                    return true;
 
-            if (string.IsNullOrEmpty(entryText))
-            {
-                entry = CreateEntry(type);
-                entry.Comment = comment;
-                return true;
-            }
-            try
-            {
-                if (entryText.StartsWith(USER_AGENT_KEYWORD, StringComparison.OrdinalIgnoreCase))
-                {
-                    type = EntryType.UserAgent;
-                    entry = CreateEntry(type);
-                    entry.Comment = comment;
-                    string userAgent = entryText.Substring(USER_AGENT_KEYWORD.Length).Trim().TrimEnd('?');
+                case RobotsLineKind.UserAgent:
+                    entry = new UserAgentEntry { UserAgent = line.Value, Comment = line.Comment };
+                    return true;
 
-                    if(userAgent == null || string.IsNullOrEmpty(userAgent.Trim()))
-                    {
-                        entry = null;
-                        return false;                         
-                    }
-                    else
-                    {
-                         ((UserAgentEntry) entry).UserAgent = userAgent;
-                    }
-                }
-                else if (entryText.StartsWith(DISALLOW_KEYWORD, StringComparison.OrdinalIgnoreCase))
-                {
-                    type = EntryType.Disallow;
-                    bool inverted = entryText.EndsWith("$");
-                    string value = entryText.Substring(DISALLOW_KEYWORD.Length).Trim();
+                case RobotsLineKind.Disallow:
+                case RobotsLineKind.Allow:
+                    // An empty Allow or Disallow matches nothing, so there is no rule to return.
+                    if (line.Value.Length == 0)
+                        return false;
 
-                    Uri url = null;
-                    if (!string.IsNullOrEmpty(value) && Uri.TryCreate(baseUri, value, out url))
-                    {
-                        entry = CreateEntry(type);
-                        entry.Comment = comment;
-                        ((UrlEntry)entry).Url = url;
-                        ((UrlEntry)entry).Inverted = inverted;
-                    }
-                }
-                else if (entryText.StartsWith(ALLOW_KEYWORD, StringComparison.OrdinalIgnoreCase))
-                {
-                    type = EntryType.Allow;
-                    bool inverted = entryText.EndsWith("$");
-                    string value = entryText.Substring(ALLOW_KEYWORD.Length).Trim().TrimEnd('?');
+                    entry = CreateRule(line.Kind == RobotsLineKind.Allow ? new AllowEntry() : (UrlEntry)new DisallowEntry(), baseUri, line.Value, line.Comment);
+                    return true;
 
-                    Uri url;
-                    if (Uri.TryCreate(baseUri, value, out url))
-                    {
-                        entry = CreateEntry(type);
-                        entry.Comment = comment;
-                        ((UrlEntry)entry).Url = url;
-                        ((UrlEntry)entry).Inverted = inverted;
-                    }
-                }
-                else if (entryText.StartsWith(CRAWL_DELAY_KEYWORD, StringComparison.OrdinalIgnoreCase))
-                {
-                    type = EntryType.CrawlDelay;
-                    string value = entryText.Substring(CRAWL_DELAY_KEYWORD.Length).Trim().TrimEnd('?');
+                case RobotsLineKind.CrawlDelay:
+                    entry = new CrawlDelayEntry { Delay = line.CrawlDelay, Comment = line.Comment };
+                    return true;
 
-                    entry = CreateEntry(type);
-                    entry.Comment = comment;
+                case RobotsLineKind.Sitemap:
+                    entry = new SitemapEntry { SitemapUrl = line.Value, Comment = line.Comment };
+                    return true;
 
-                    try
-                    {
-                        ((CrawlDelayEntry)entry).CrawlDelay = Convert.ToInt32(value);
-                    }
-                    catch
-                    {
-                        ((CrawlDelayEntry)entry).CrawlDelay = 0;
-                    }
-                }
-                else if (entryText.StartsWith(SITEMAP_KEYWORD, StringComparison.OrdinalIgnoreCase))
-                {
-                    type = EntryType.Sitemap;
-                    string value = entryText.Substring(SITEMAP_KEYWORD.Length).Trim().TrimEnd('?');
-
-                    entry = CreateEntry(type);
-                    entry.Comment = comment;
-
-                    try
-                    {
-                        ((SitemapEntry)entry).SitemapUrl = value;
-                    }
-                    catch
-                    {
-                        ((SitemapEntry)entry).SitemapUrl = "";
-                    }
-                }
-                else
-                {
-                    entry = null;
+                default:
                     return false;
-                }
             }
-            catch (Exception)
-            {
-                entry = null;
-                return false;
-            }
-            if (entry == null)
-                return false;
-            return true;
+        }
+
+        [SuppressMessage("Usage", "CA2234:Pass system uri objects instead of strings",
+            Justification = "value is a robots.txt path pattern that may contain '*' and '$', not a URI; this TryCreate is what turns it into the informational Url.")]
+        private static UrlEntry CreateRule(UrlEntry rule, Uri baseUri, string value, string comment)
+        {
+            Uri? url;
+            Uri.TryCreate(baseUri, value, out url);
+
+            rule.Comment = comment;
+            rule.Url = url;
+            rule.Inverted = value.Length > 0 && value[value.Length - 1] == '$';
+            return rule;
         }
     }
 }

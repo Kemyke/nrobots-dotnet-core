@@ -1,4 +1,5 @@
-﻿using Robots.Model;
+﻿using System.Diagnostics.CodeAnalysis;
+using Robots.Model;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
 
@@ -11,49 +12,14 @@ namespace RobotsTests
     ///to contain all EntryTest Unit Tests
     ///</summary>
     [TestClass]
+    [SuppressMessage("Maintainability", "CA1515:Consider making public types internal",
+        Justification = "MSTest discovers and creates test classes through reflection. Internal test classes need [DiscoverInternals] and then trip CA1812 (never instantiated) instead, because the analyzer can't see MSTest create them.")]
     public class EntryTest
     {
-        /// <summary>
-        ///Gets or sets the test context which provides
-        ///information about and functionality for the current test run.
-        ///</summary>
-        public TestContext TestContext { get; set; }
-
-        #region Additional test attributes
-        // 
-        //You can use the following additional attributes as you write your tests:
-        //
-        //Use ClassInitialize to run code before running the first test in the class
-        //[ClassInitialize()]
-        //public static void MyClassInitialize(TestContext testContext)
-        //{
-        //}
-        //
-        //Use ClassCleanup to run code after all tests in a class have run
-        //[ClassCleanup()]
-        //public static void MyClassCleanup()
-        //{
-        //}
-        //
-        //Use TestInitialize to run code before running each test
-        //[TestInitialize()]
-        //public void MyTestInitialize()
-        //{
-        //}
-        //
-        //Use TestCleanup to run code after each test has run
-        //[TestCleanup()]
-        //public void MyTestCleanup()
-        //{
-        //}
-        //
-        #endregion
-
-
         [TestMethod]
         public void CommentTest()
         {
-            Entry target = new UserAgentEntry(); // TODO: Initialize to an appropriate value
+            Entry target = new UserAgentEntry();
             const string expected = "comment";
             target.Comment = expected;
             string actual = target.Comment;
@@ -63,9 +29,9 @@ namespace RobotsTests
         [TestMethod]
         public void HasCommentTest()
         {
-            Entry target = new UserAgentEntry(); // TODO: Initialize to an appropriate value
+            Entry target = new UserAgentEntry();
             bool actual = target.HasComment;
-            Assert.AreEqual(false, actual);
+            Assert.IsFalse(actual);
         }
 
         [TestMethod]
@@ -73,14 +39,7 @@ namespace RobotsTests
         {
             Entry target = new UserAgentEntry {Comment = "comment"};
             bool actual = target.HasComment;
-            Assert.AreEqual(true, actual);
-        }
-
-        internal virtual Entry CreateEntry()
-        {
-            // TODO: Instantiate an appropriate concrete class.
-            Entry target = null;
-            return target;
+            Assert.IsTrue(actual);
         }
 
 
@@ -89,10 +48,10 @@ namespace RobotsTests
         {
             var baseUri = new Uri("http://www.microsoft.com");
             const string entryText = "User-Agent: *";
-            Entry entry;
+            Entry? entry;
             bool actual = Entry.TryParse(baseUri, entryText, out entry);
             Assert.IsNotNull(entry);
-            Assert.AreEqual(true, actual);
+            Assert.IsTrue(actual);
             Assert.AreEqual(EntryType.UserAgent, entry.Type);
             Assert.AreEqual("*", ((UserAgentEntry)entry).UserAgent);
         }
@@ -102,10 +61,10 @@ namespace RobotsTests
         {
             var baseUri = new Uri("http://www.microsoft.com");
             const string entryText = "User-Agent:";
-            Entry entry;
+            Entry? entry;
             bool actual = Entry.TryParse(baseUri, entryText, out entry);
             Assert.IsNull(entry);
-            Assert.AreEqual(false, actual);
+            Assert.IsFalse(actual);
         }
 
         [TestMethod]
@@ -113,13 +72,13 @@ namespace RobotsTests
         {
             var baseUri = new Uri("http://www.microsoft.com");
             const string entryText = "disallow: /web  #comment";
-            Entry entry;
+            Entry? entry;
             bool actual = Entry.TryParse(baseUri, entryText, out entry);
             Assert.IsNotNull(entry);
-            Assert.AreEqual(true, actual);
+            Assert.IsTrue(actual);
             Assert.AreEqual(EntryType.Disallow, entry.Type);
             Assert.IsNotNull(((DisallowEntry)entry).Url);
-            Assert.AreEqual("/web", ((DisallowEntry)entry).Url.LocalPath);
+            Assert.AreEqual("/web", ((DisallowEntry)entry).Url!.LocalPath);
             Assert.AreEqual("comment", entry.Comment);
         }
 
@@ -128,10 +87,10 @@ namespace RobotsTests
         {
             var baseUri = new Uri("http://www.microsoft.com");
             const string entryText = "disallow:";
-            Entry entry;
+            Entry? entry;
             bool actual = Entry.TryParse(baseUri, entryText, out entry);
-            Assert.AreEqual(null, entry);
-            Assert.AreEqual(false, actual);
+            Assert.IsNull(entry);
+            Assert.IsFalse(actual);
         }
 
         [TestMethod]
@@ -139,10 +98,10 @@ namespace RobotsTests
         {
             var baseUri = new Uri("http://www.microsoft.com");
             const string entryText = "disallow:  ";
-            Entry entry;
+            Entry? entry;
             bool actual = Entry.TryParse(baseUri, entryText, out entry);
-            Assert.AreEqual(null, entry);
-            Assert.AreEqual(false, actual);
+            Assert.IsNull(entry);
+            Assert.IsFalse(actual);
         }
 
         [TestMethod]
@@ -150,13 +109,13 @@ namespace RobotsTests
         {
             var baseUri = new Uri("http://www.microsoft.com");
             const string entryText = "allow: /web";
-            Entry entry;
+            Entry? entry;
             bool actual = Entry.TryParse(baseUri, entryText, out entry);
             Assert.IsNotNull(entry);
-            Assert.AreEqual(true, actual);
+            Assert.IsTrue(actual);
             Assert.AreEqual(EntryType.Allow, entry.Type);
             Assert.IsNotNull(((AllowEntry)entry).Url);
-            Assert.AreEqual("/web", ((AllowEntry)entry).Url.LocalPath);
+            Assert.AreEqual("/web", ((AllowEntry)entry).Url!.LocalPath);
         }
 
         [TestMethod]
@@ -164,10 +123,10 @@ namespace RobotsTests
         {
             var baseUri = new Uri("http://www.microsoft.com");
             const string entryText = "#comment";
-            Entry entry;
+            Entry? entry;
             bool actual = Entry.TryParse(baseUri, entryText, out entry);
             Assert.IsNotNull(entry);
-            Assert.AreEqual(true, actual);
+            Assert.IsTrue(actual);
             Assert.AreEqual(EntryType.Comment, entry.Type);
             Assert.AreEqual("comment", entry.Comment);
         }
@@ -175,20 +134,16 @@ namespace RobotsTests
         [TestMethod]
         public void TryParse_null_base_uri_Test()
         {
-            Assert.ThrowsException<ArgumentNullException>(() =>
-            {
-                Entry entry;
-                Entry.TryParse(null, "", out entry);
-            });
+            Assert.ThrowsExactly<ArgumentNullException>(() => Entry.TryParse(null!, "", out _));
         }
 
         [TestMethod]
         public void TryParse_empty_string_Test()
         {
             var baseUri = new Uri("http://www.microsoft.com");
-            Entry entry;
+            Entry? entry;
             bool actual = Entry.TryParse(baseUri, "", out entry);
-            Assert.AreEqual(false, actual);
+            Assert.IsFalse(actual);
             Assert.IsNull(entry);
         }
     }
